@@ -29,7 +29,7 @@ class FlowOrchestrator:
     def run_initial_flow(self, symptom: str) -> dict:
         session_id = create_session()
 
-        # FSM-Zustand: START → Hund spricht
+        # Hund antwortet (Symptomvalidierung, Perspektive, Übergabefrage)
         dog_response = self.dog.respond(symptom=symptom)
         append_message(session_id, "dog", dog_response)
         set_state(session_id, DialogState.DOG_RESPONDED)
@@ -42,31 +42,33 @@ class FlowOrchestrator:
     def run_continued_flow(self, session_id: str, user_answer: str) -> dict:
         append_message(session_id, "user", user_answer)
         state = get_state(session_id)
-
         messages = []
+
         if state == DialogState.DOG_RESPONDED:
-            instincts = self._classify_only(user_answer)
-            mentor_reply = self.mentor.respond(
-                symptom=user_answer,
-                instinct_data=instincts.model_dump()
-            )
+            if self._is_positive(user_answer):
+                # Mensch will Analyse → Coach ist dran
+                coach_reply = self.coach.respond(symptom=user_answer, client=self.client)
+                append_message(session_id, "coach", coach_reply)
+                set_state(session_id, DialogState.COACH_RESPONDED)
+                messages.append({"sender": "coach", "text": coach_reply})
+            else:
+                # Mensch hat nicht klar geantwortet – Hund fragt nochmal
+                reminder = "Magst du mir sagen, ob du möchtest, dass mein Coach hilft?"
+                messages.append({"sender": "dog", "text": reminder})
+
+        elif state == DialogState.COACH_RESPONDED:
+            # Mentor erklärt Diagnose (placeholder-Logik)
+            mentor_reply = self.mentor.respond(symptom=user_answer)
             append_message(session_id, "mentor", mentor_reply)
             set_state(session_id, DialogState.MENTOR_RESPONDED)
             messages.append({"sender": "mentor", "text": mentor_reply})
 
         elif state == DialogState.MENTOR_RESPONDED:
-            coach_reply = self.coach.respond(symptom=user_answer, client=self.client)
-            append_message(session_id, "coach", coach_reply)
-            set_state(session_id, DialogState.COACH_RESPONDED)
-            messages.append({"sender": "coach", "text": coach_reply})
-
-        elif state == DialogState.COACH_RESPONDED:
-            history = get_history(session_id)
-            last_msgs = [m["text"] for m in history if m["sender"] in {"dog", "mentor", "coach"}]
-            companion_reply = self.companion.respond(previous_messages=last_msgs)
-            append_message(session_id, "companion", companion_reply)
+            # Trainer bietet Trainingsplan an (noch Platzhalter)
+            trainer_reply = self.trainer.respond(symptom=user_answer)
+            append_message(session_id, "trainer", trainer_reply)
             set_state(session_id, DialogState.DONE)
-            messages.append({"sender": "companion", "text": companion_reply})
+            messages.append({"sender": "trainer", "text": trainer_reply})
 
         elif state == DialogState.DONE:
             messages.append({"sender": "system", "text": "Der Flow ist abgeschlossen."})
@@ -81,3 +83,7 @@ class FlowOrchestrator:
 
     def _classify_only(self, text: str) -> InstinctClassification:
         return classify_instincts(text, self.client)
+
+    def _is_positive(self, text: str) -> bool:
+        text_lower = text.strip().lower()
+        return any(kw in text_lower for kw in ["ja", "gerne", "bitte", "ok", "klar"])
