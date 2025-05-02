@@ -2,36 +2,38 @@
 
 import uuid
 from typing import Dict, List
+from src.orchestrator.states import DialogState
 
-# Datenstruktur für Nachrichten einer Session
-SessionData = Dict[str, List[Dict[str, str]]]
-
-# Einfacher in-memory-Store
-_store: SessionData = {}
+SessionData = Dict[str, Dict[str, List[Dict[str, str]] | DialogState]]
+_store: Dict[str, Dict] = {}
 
 def create_session() -> str:
-    """Erzeugt eine neue Session-ID und legt leere Historie an."""
     session_id = str(uuid.uuid4())
-    _store[session_id] = []
+    _store[session_id] = {
+        "history": [],
+        "state": DialogState.START
+    }
     return session_id
 
 def append_message(session_id: str, sender: str, text: str) -> None:
-    """Fügt eine Nachricht zur Session-Historie hinzu."""
     if session_id in _store:
-        _store[session_id].append({"sender": sender, "text": text})
+        _store[session_id]["history"].append({"sender": sender, "text": text})
     else:
         raise KeyError(f"Session {session_id} existiert nicht.")
 
 def get_history(session_id: str) -> List[Dict[str, str]]:
-    """Liefert die komplette Historie einer Session."""
-    return _store.get(session_id, [])
+    return _store.get(session_id, {}).get("history", [])
 
 def session_exists(session_id: str) -> bool:
-    """Prüft, ob eine Session existiert."""
     return session_id in _store
 
 def get_last_message(session_id: str) -> dict | None:
-    """Gibt die letzte Nachricht der Session zurück – oder None."""
-    if session_id in _store and _store[session_id]:
-        return _store[session_id][-1]
-    return None
+    history = _store.get(session_id, {}).get("history", [])
+    return history[-1] if history else None
+
+def get_state(session_id: str) -> DialogState:
+    return _store.get(session_id, {}).get("state", DialogState.START)
+
+def set_state(session_id: str, state: DialogState) -> None:
+    if session_id in _store:
+        _store[session_id]["state"] = state
