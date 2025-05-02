@@ -6,7 +6,7 @@ from src.agents.mentor_agent import MentorAgent
 from src.agents.coach_agent import CoachAgent
 from src.agents.companion_agent import CompanionAgent
 from src.agents.trainer_agent import TrainerAgent
-from src.services.instinct_classifier import InstinctClassification
+from src.services.instinct_classifier import InstinctClassification, classify_instincts
 from openai import OpenAI
 
 class FlowOrchestrator:
@@ -40,5 +40,4 @@ class FlowOrchestrator:
         }
 
     def _classify_only(self, text: str) -> InstinctClassification:
-        from services.instinct_classifier import classify_instincts
         return classify_instincts(text, self.client)
