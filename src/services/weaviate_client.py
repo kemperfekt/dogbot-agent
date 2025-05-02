@@ -18,7 +18,7 @@ def get_weaviate_client() -> weaviate.WeaviateClient:
     """
     weaviate_url = os.getenv("WEAVIATE_URL")
     weaviate_api_key = os.getenv("WEAVIATE_API_KEY")
-    openai_key = os.getenv("OPENAI_APIKEY") or os.getenv("OPENAI_API_KEY")
+    openai_key = os.getenv("OPENAI_APIKEY") or os.getenv("OPENAI_API_KEY") or os.getenv("OPENAIAPIKEY")
 
     if not weaviate_url:
         raise HTTPException(status_code=500, detail="WEAVIATE_URL ist nicht gesetzt")

@@ -5,7 +5,7 @@
 # -------------------------------
 
 from pydantic import BaseModel, ConfigDict, field_validator
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 # ---------------------------------------
 # Modell für eine Instinktvariante eines Symptoms
@@ -19,6 +19,9 @@ class Instinktvariante(BaseModel):
 # ---------------------------------------
 class SymptomInfo(BaseModel):
     symptom_name: str
+    beschreibung: Optional[str] = None
+    erste_hilfe: Optional[str] = None
+    hypothese_zuhause: Optional[str] = None
     instinktvarianten: List[Instinktvariante]
 
     model_config = ConfigDict(populate_by_name=True)
@@ -32,19 +35,16 @@ class SymptomInfo(BaseModel):
         - If list of strings: wrap into dicts with empty instinkt
         - Else: leave as is
         """
-        # raw dict from Weaviate
         if isinstance(v, dict):
             return [
                 {"instinkt": name, "beschreibung": desc}
                 for name, desc in v.items()
             ]
-        # list of strings fallback
         if isinstance(v, list) and v and isinstance(v[0], str):
             return [
                 {"instinkt": "", "beschreibung": item}
                 for item in v
             ]
-        # already in desired format
         return v
 
 # ---------------------------------------

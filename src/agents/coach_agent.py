@@ -12,34 +12,35 @@ class CoachAgent(BaseAgent):
     def __init__(self, client: OpenAI):
         super().__init__("🚀 Coach")
         self.client = client
-        self.instinkte = ["jagdinstinkt", "rudelinstinkt", "territorialinstinkt", "sexualinstinkt"]
+        self.instinkte = ["jagd", "rudel", "territorial", "sexual"]
 
     def respond(self, symptom: str, session_id: str) -> str:
-        # Lade Diagnose-Fortschritt
         progress = get_diagnose_progress(session_id)
         already_asked = progress.get("asked_instincts", [])
         remembered_symptom = progress.get("symptom")
 
-        # Wenn Symptom sich geändert hat, Fortschritt zurücksetzen
         if remembered_symptom != symptom:
             progress = {"asked_instincts": [], "symptom": symptom}
             already_asked = []
 
-        # Hole SymptomInfo
         try:
             info = get_symptom_info(symptom)
         except Exception:
             return "Ich brauche etwas mehr Information, um dir gute Fragen stellen zu können."
 
-        # Finde nächste offene Instinkterklärung
         for instinkt in self.instinkte:
             if instinkt in already_asked:
                 continue
-            erklaerung = info.instinkterklaerungen.get(instinkt)
+            erklaerung = next(
+                (v for v in info.instinktvarianten if v.instinkt == instinkt),
+                None
+            )
             if erklaerung and erklaerung.beschreibung:
                 progress["asked_instincts"].append(instinkt)
                 set_diagnose_progress(session_id, progress)
                 return f"Trifft das auf dein Erlebnis zu? {erklaerung.beschreibung}"
 
-        # Alle Instinkte durch → später GPT-Diagnose
         return "Ich habe dir nun alle Fragen gestellt, die mir helfen, dein Problem besser zu verstehen. Gib mir bitte kurz Bescheid, wenn du bereit für eine Einschätzung bist."
+
+    def build_prompt(self, symptom: str) -> str:
+        return "Coach verwendet direkten Flow, kein klassischer Prompt."
