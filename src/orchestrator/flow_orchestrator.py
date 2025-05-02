@@ -2,91 +2,104 @@
 
 import os
 from openai import OpenAI
+
 from src.agents.dog_agent import DogAgent
 from src.agents.mentor_agent import MentorAgent
 from src.agents.coach_agent import CoachAgent
 from src.agents.companion_agent import CompanionAgent
 from src.agents.trainer_agent import TrainerAgent
-from src.services.instinct_classifier import InstinctClassification, classify_instincts
+
+from src.services.instinct_classifier import InstinctClassification
+from src.services.retrieval import get_symptom_info
+
 from src.state.session_store import (
     create_session,
     append_message,
     get_last_message,
-    get_state,
-    set_state,
+    session_exists
 )
-from src.orchestrator.states import DialogState
+
 
 class FlowOrchestrator:
     def __init__(self):
-        self.client = OpenAI(api_key=os.getenv("OPENAI_APIKEY"))
+        self.client = OpenAI(api_key=os.getenv("OPENAIAPIKEY"))
         self.dog = DogAgent()
         self.mentor = MentorAgent()
-        self.coach = CoachAgent(self.client)
+        self.coach = CoachAgent()
         self.companion = CompanionAgent()
         self.trainer = TrainerAgent()
 
     def run_initial_flow(self, symptom: str) -> dict:
         session_id = create_session()
 
-        # Hund antwortet (Symptomvalidierung, Perspektive, Übergabefrage)
-        dog_response = self.dog.respond(symptom=symptom)
+        # Hund antwortet
+        dog_response = self.dog.respond(symptom)
         append_message(session_id, "dog", dog_response)
-        set_state(session_id, DialogState.DOG_RESPONDED)
 
         return {
             "session_id": session_id,
-            "messages": [{"sender": "dog", "text": dog_response}]
+            "messages": [
+                {"sender": "dog", "text": dog_response}
+            ]
         }
 
     def run_continued_flow(self, session_id: str, user_answer: str) -> dict:
+        if not session_exists(session_id):
+            raise ValueError("Session-ID ist ungültig.")
+
         append_message(session_id, "user", user_answer)
-        state = get_state(session_id)
+
+        # 🛠 SymptomInfo-Objekt laden
+        symptom_info = get_symptom_info(user_answer)
+
+        # 🧠 Coach analysiert anhand der Weaviate-Daten + GPT
+        coach_reply = self.coach.respond(session_id, symptom_info, self.client)
+
         messages = []
 
-        if state == DialogState.DOG_RESPONDED:
-            if self._is_positive(user_answer):
-                # Mensch will Analyse → Coach beginnt mit Rückfragen
-                coach_reply = self.coach.respond(symptom=user_answer, session_id=session_id)
-                append_message(session_id, "coach", coach_reply)
-                set_state(session_id, DialogState.COACH_RESPONDED)
-                messages.append({"sender": "coach", "text": coach_reply})
-            else:
-                messages.append({"sender": "dog", "text": "Magst du mir sagen, ob du möchtest, dass mein Coach hilft?"})
+        if isinstance(coach_reply, dict):
+            if "question" in coach_reply:
+                question = coach_reply["question"]
+                messages.append({
+                "sender": "coach",
+                "text": question 
+                })
+            elif "diagnosis" in coach_reply:
+                diagnosis = coach_reply["diagnosis"]
+                instinkt = diagnosis.get("instinkt", "unbekannt")
+                messages.append({
+                    "sender": "coach",
+                    "text": f"Danke für deine Antworten. Ich vermute, dass der Instinkt '{instinkt}' eine zentrale Rolle spielt. Ich gebe weiter an den Mentor."
+                })
 
-        elif state == DialogState.COACH_RESPONDED:
-            # Coach stellt weitere Rückfragen, solange nötig
-            coach_reply = self.coach.respond(symptom=user_answer, session_id=session_id)
-            append_message(session_id, "coach", coach_reply)
-            messages.append({"sender": "coach", "text": coach_reply})
-            # (Optional: Bei Erreichen aller Fragen Zustand wechseln)
+                # Mentor erklärt Diagnose
+                mentor_response = self.mentor.respond(
+                    symptom=user_answer,
+                    instinct_data=diagnosis
+                )
+                messages.append({
+                    "sender": "mentor",
+                    "text": mentor_response
+                })
 
-        elif state == DialogState.MENTOR_RESPONDED:
-            mentor_reply = self.mentor.respond(symptom=user_answer)
-            append_message(session_id, "mentor", mentor_reply)
-            set_state(session_id, DialogState.MENTOR_RESPONDED)
-            messages.append({"sender": "mentor", "text": mentor_reply})
-
-        elif state == DialogState.MENTOR_RESPONDED:
-            trainer_reply = self.trainer.respond(symptom=user_answer)
-            append_message(session_id, "trainer", trainer_reply)
-            set_state(session_id, DialogState.DONE)
-            messages.append({"sender": "trainer", "text": trainer_reply})
-
-        elif state == DialogState.DONE:
-            messages.append({"sender": "system", "text": "Der Flow ist abgeschlossen."})
+                # Trainer leitet daraus Hilfe ab
+                trainer_response = self.trainer.respond(symptom_info)
+                messages.append({
+                    "sender": "trainer",
+                    "text": trainer_response
+                })
 
         else:
-            messages.append({"sender": "system", "text": "Ungültiger Zustand."})
+            # fallback für reine Textantwort
+            messages.append({
+                "sender": "coach",
+                "text": coach_reply
+            })
+
+        for msg in messages:
+            append_message(session_id, msg["sender"], msg["text"])
 
         return {
             "session_id": session_id,
             "messages": messages
         }
-
-    def _classify_only(self, text: str) -> InstinctClassification:
-        return classify_instincts(text, self.client)
-
-    def _is_positive(self, text: str) -> bool:
-        text_lower = text.strip().lower()
-        return any(kw in text_lower for kw in ["ja", "gerne", "bitte", "ok", "klar"])

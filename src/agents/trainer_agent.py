@@ -1,23 +1,21 @@
-# agents/trainer_agent.py
+# src/agents/trainer_agent.py
 
-from pydantic import BaseModel
-from typing import List
-from src.agents.base_agent import BaseAgent 
-from src.prompts.system_prompt_trainer import trainer_prompt
+from src.agents.base_agent import BaseAgent
+from src.models.symptom_models import SymptomInfo
+from src.prompts.system_prompt_trainer import system_prompt_trainer, build_trainer_prompt
 
-class TrainingPlan(BaseModel):
-    plan: str
-    tips: List[str]
 
 class TrainerAgent(BaseAgent):
     def __init__(self):
-        super().__init__("🏋️‍♂️ Trainer")
+        super().__init__("🛠 Trainer")
 
-    def build_prompt(self, history: list[str], mentor_summary: str) -> str:
-        joined = "\n".join(history[-3:])
-        return (
-            f"{trainer_prompt}\n"
-            f"Zusammenfassung des MentorAgent: {mentor_summary}\n"
-            f"Letzter Gesprächsverlauf:\n{joined}\n"
-            "Formuliere daraus einen Trainingsplan mit Ziel und 3 alltagstauglichen Tipps."
+    def build_prompt(self, info: SymptomInfo) -> str:
+        return build_trainer_prompt(
+            symptom_name=info.symptom_name,
+            erste_hilfe=getattr(info, "erste_hilfe", ""),
+            hypothese_zuhause=getattr(info, "hypothese_zuhause", None)
         )
+
+    def respond(self, symptom_info: SymptomInfo) -> str:
+        prompt = self.build_prompt(symptom_info)
+        return super().respond(system_prompt=system_prompt_trainer, prompt=prompt)
