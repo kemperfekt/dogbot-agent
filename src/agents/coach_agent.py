@@ -7,12 +7,12 @@ from src.prompts.system_prompt_questions import diagnose_rueckfragen
 
 class CoachAgent(BaseAgent):
     def __init__(self, client: OpenAI):
-        super().__init__("🛠 Coach")
+        super().__init__("🚀 Coach")
         self.client = client
 
     def build_prompt(self, symptom: str, instinct_data: dict | None = None) -> str:
         if instinct_data is None:
-            return diagnose_rueckfrage_generisch.replace("{{symptom}}", symptom)
+            return diagnose_rueckfragen.replace("{{symptom}}", symptom)
         else:
             return f"Du beschreibst: '{symptom}'. Ich vermute folgende Instinkte: {instinct_data}"
 
