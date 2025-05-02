@@ -1,16 +1,17 @@
 # orchestrator/flow_orchestrator.py
 
-from agents.dog_agent import DogAgent
-from agents.mentor_agent import MentorAgent
-from agents.coach_agent import CoachAgent
-from agents.companion_agent import CompanionAgent
-from agents.trainer_agent import TrainerAgent
-from services.instinct_classifier import InstinctClassification
+import os
+from src.agents.dog_agent import DogAgent
+from src.agents.mentor_agent import MentorAgent
+from src.agents.coach_agent import CoachAgent
+from src.agents.companion_agent import CompanionAgent
+from src.agents.trainer_agent import TrainerAgent
+from src.services.instinct_classifier import InstinctClassification
 from openai import OpenAI
 
 class FlowOrchestrator:
     def __init__(self):
-        self.client = OpenAI()
+        self.client = OpenAI(api_key=os.getenv("OPENAI_APIKEY"))
         self.dog = DogAgent()
         self.mentor = MentorAgent()
         self.coach = CoachAgent(self.client)

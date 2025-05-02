@@ -4,7 +4,9 @@ from openai import OpenAI
 from pydantic import BaseModel
 from typing import List, Literal
 
-from prompts.blocks import hundliche_wahrnehmung, diagnose_instinktklassifikation
+from src.prompts.prompt_hundliche_wahrnehmung import hundliche_wahrnehmung
+from src.prompts.system_prompt_diagnose import diagnose_instinktklassifikation
+
 
 # Antwortmodell für GPT Function Calling
 class InstinctClassification(BaseModel):

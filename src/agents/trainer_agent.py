@@ -1,8 +1,9 @@
 # agents/trainer_agent.py
 
-from agents.base_agent import BaseAgent
 from pydantic import BaseModel
 from typing import List
+from src.agents.base_agent import BaseAgent 
+from src.prompts.system_prompt_trainer import trainer_prompt
 
 class TrainingPlan(BaseModel):
     plan: str
@@ -15,7 +16,8 @@ class TrainerAgent(BaseAgent):
     def build_prompt(self, history: list[str], mentor_summary: str) -> str:
         joined = "\n".join(history[-3:])
         return (
-            f"Hier ist die Zusammenfassung des MentorAgent: {mentor_summary}\n"
-            f"Und das Gespräch bisher:\n{joined}\n"
-            "Formuliere nun einen konkreten Trainingsplan mit Ziel und 3 alltagstauglichen Tipps."
+            f"{trainer_prompt}\n"
+            f"Zusammenfassung des MentorAgent: {mentor_summary}\n"
+            f"Letzter Gesprächsverlauf:\n{joined}\n"
+            "Formuliere daraus einen Trainingsplan mit Ziel und 3 alltagstauglichen Tipps."
         )

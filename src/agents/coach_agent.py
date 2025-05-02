@@ -1,9 +1,9 @@
 # agents/coach_agent.py
 
-from agents.base_agent import BaseAgent
-from services.instinct_classifier import classify_instincts
 from openai import OpenAI
-from prompts.blocks import diagnose_rueckfrage_generisch
+from src.agents.base_agent import BaseAgent
+from src.services.instinct_classifier import classify_instincts
+from src.prompts.system_prompt_questions import diagnose_rueckfragen
 
 class CoachAgent(BaseAgent):
     def __init__(self, client: OpenAI):
@@ -14,7 +14,6 @@ class CoachAgent(BaseAgent):
         if instinct_data is None:
             return diagnose_rueckfrage_generisch.replace("{{symptom}}", symptom)
         else:
-            # z. B. Später spezifische Rückfragen formulieren basierend auf Instinkten
             return f"Du beschreibst: '{symptom}'. Ich vermute folgende Instinkte: {instinct_data}"
 
     def respond(self, symptom: str, client: OpenAI) -> str:

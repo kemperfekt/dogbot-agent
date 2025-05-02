@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from orchestrator.flow_orchestrator import FlowOrchestrator
+from src.orchestrator.flow_orchestrator import FlowOrchestrator
 
 router = APIRouter()
 orchestrator = FlowOrchestrator()
