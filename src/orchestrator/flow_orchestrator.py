@@ -46,25 +46,28 @@ class FlowOrchestrator:
 
         if state == DialogState.DOG_RESPONDED:
             if self._is_positive(user_answer):
-                # Mensch will Analyse → Coach ist dran
-                coach_reply = self.coach.respond(symptom=user_answer, client=self.client)
+                # Mensch will Analyse → Coach beginnt mit Rückfragen
+                coach_reply = self.coach.respond(symptom=user_answer, session_id=session_id)
                 append_message(session_id, "coach", coach_reply)
                 set_state(session_id, DialogState.COACH_RESPONDED)
                 messages.append({"sender": "coach", "text": coach_reply})
             else:
-                # Mensch hat nicht klar geantwortet – Hund fragt nochmal
-                reminder = "Magst du mir sagen, ob du möchtest, dass mein Coach hilft?"
-                messages.append({"sender": "dog", "text": reminder})
+                messages.append({"sender": "dog", "text": "Magst du mir sagen, ob du möchtest, dass mein Coach hilft?"})
 
         elif state == DialogState.COACH_RESPONDED:
-            # Mentor erklärt Diagnose (placeholder-Logik)
+            # Coach stellt weitere Rückfragen, solange nötig
+            coach_reply = self.coach.respond(symptom=user_answer, session_id=session_id)
+            append_message(session_id, "coach", coach_reply)
+            messages.append({"sender": "coach", "text": coach_reply})
+            # (Optional: Bei Erreichen aller Fragen Zustand wechseln)
+
+        elif state == DialogState.MENTOR_RESPONDED:
             mentor_reply = self.mentor.respond(symptom=user_answer)
             append_message(session_id, "mentor", mentor_reply)
             set_state(session_id, DialogState.MENTOR_RESPONDED)
             messages.append({"sender": "mentor", "text": mentor_reply})
 
         elif state == DialogState.MENTOR_RESPONDED:
-            # Trainer bietet Trainingsplan an (noch Platzhalter)
             trainer_reply = self.trainer.respond(symptom=user_answer)
             append_message(session_id, "trainer", trainer_reply)
             set_state(session_id, DialogState.DONE)

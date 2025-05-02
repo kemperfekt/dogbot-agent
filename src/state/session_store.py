@@ -4,14 +4,18 @@ import uuid
 from typing import Dict, List
 from src.orchestrator.states import DialogState
 
-SessionData = Dict[str, Dict[str, List[Dict[str, str]] | DialogState]]
+SessionData = Dict[str, Dict[str, any]]
 _store: Dict[str, Dict] = {}
 
 def create_session() -> str:
     session_id = str(uuid.uuid4())
     _store[session_id] = {
         "history": [],
-        "state": DialogState.START
+        "state": DialogState.START,
+        "diagnose_progress": {
+            "asked_instincts": [],
+            "symptom": None
+        }
     }
     return session_id
 
@@ -37,3 +41,10 @@ def get_state(session_id: str) -> DialogState:
 def set_state(session_id: str, state: DialogState) -> None:
     if session_id in _store:
         _store[session_id]["state"] = state
+
+def get_diagnose_progress(session_id: str) -> Dict:
+    return _store[session_id].get("diagnose_progress", {"asked_instincts": [], "symptom": None})
+
+def set_diagnose_progress(session_id: str, progress: Dict) -> None:
+    if session_id in _store:
+        _store[session_id]["diagnose_progress"] = progress
