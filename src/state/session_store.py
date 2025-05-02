@@ -29,3 +29,9 @@ def get_history(session_id: str) -> List[Dict[str, str]]:
 def session_exists(session_id: str) -> bool:
     """Prüft, ob eine Session existiert."""
     return session_id in _store
+
+def get_last_message(session_id: str) -> dict | None:
+    """Gibt die letzte Nachricht der Session zurück – oder None."""
+    if session_id in _store and _store[session_id]:
+        return _store[session_id][-1]
+    return None
