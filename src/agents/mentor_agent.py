@@ -1,38 +1,20 @@
-# src/agents/mentor_agent.py
+# agents/mentor_agent.py
 
-import os
-import json
-from typing import Dict, Any, List
-from openai import OpenAI
-from pydantic import BaseModel
+from agents.base_agent import BaseAgent
 
-from src.prompts.system_prompt_mentor import mentor_prompt
+class MentorAgent(BaseAgent):
+    def __init__(self):
+        super().__init__("🧠 Mentor")
 
-class MentorResponse(BaseModel):
-    explanation: str
-
-def init_openai_client() -> OpenAI:
-    key = os.getenv("OPENAI_APIKEY")
-    if not key:
-        raise RuntimeError("OpenAI APIKEY nicht gesetzt")
-    return OpenAI(api_key=key)
-
-def run_mentor_agent(
-    history: List[Dict[str, Any]],
-    coach_resp: Dict[str, Any]
-) -> Dict[str, Any]:
-    """
-    Liefert eine Hintergrund-Erklärung (Mentor) basierend auf bisherigen 
-    History und der Coach-Diagnose oder -Frage.
-    """
-    client = init_openai_client()
-    messages = [
-        {"role":"system","content": mentor_prompt},
-        {"role":"assistant_coach","content": json.dumps(coach_resp)},
-    ]
-    resp = client.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL","gpt-4o-mini"),
-        messages=messages
-    )
-    text = resp.choices[0].message.content
-    return MentorResponse(explanation=text).dict()
+    def build_prompt(self, symptom: str, instinct_data: dict | None = None) -> str:
+        if instinct_data:
+            instinkte = ", ".join([f"{k}: {v}%" for k, v in instinct_data.items()])
+            return (
+                f"Basierend auf dem beschriebenen Verhalten ('{symptom}') wurden folgende Instinkte erkannt: {instinkte}.\n"
+                "Ich erkläre dir nun, was diese Instinkte bedeuten und wie du damit umgehen kannst."
+            )
+        else:
+            return (
+                f"Du hast beschrieben: '{symptom}'.\n"
+                "Ich erkläre dir, welche Instinkte bei Hunden grundsätzlich eine Rolle spielen und worauf du achten kannst."
+            )

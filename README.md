@@ -20,6 +20,14 @@ pip install -r requirements.txt
 
 ---
 
+## Branches
+# Branch: agentic-refactor-base
+
+Ausgangspunkt für den neuen Agenten-Flow (Hund, Mentor, Coach, Begleiter).
+Tests laufen, Pact ist deaktiviert. Alte diagnose_agent-Logik bleibt bestehen, wird aber ersetzt.
+
+
+
 ## 🧪 Start the Agent
 ```bash
 uvicorn main:app --reload
