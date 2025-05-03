@@ -1,6 +1,6 @@
 # src/prompts/system_prompt_questions.py
 
-# Hinweis: Dieser Prompt wird gemeinsam mit `hundliche_wahrnehmung` verwendet
+# Hinweis: Dieser Prompt wird gemeinsam mit `system_prompt_dog` verwendet
 # und erzeugt einen ruhigen, freundlichen Gesprächsverlauf aus Hundesicht.
 
 diagnose_rueckfragen = """\

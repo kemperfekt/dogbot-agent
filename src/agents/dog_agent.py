@@ -1,7 +1,7 @@
 # src/agents/dog_agent.py
 
 from src.agents.base_agent import BaseAgent
-from src.prompts.prompt_hundliche_wahrnehmung import hundliche_wahrnehmung
+from src.prompts.system_prompt_dog import system_prompt_dog
 from src.services.retrieval import get_hundewissen
 
 class DogAgent(BaseAgent):
@@ -13,7 +13,7 @@ class DogAgent(BaseAgent):
         fachwissen = get_hundewissen(symptom)
 
         return (
-            f"{hundliche_wahrnehmung}\n\n"
+            f"{system_prompt_dog}\n\n"
             f"Das hier sind Eindrücke, die du als Hund kennst:\n"
             f"{fachwissen}\n\n"
             f"Formuliere aus der Sicht eines Hundes, basierend auf seiner Wahrnehmung. "
@@ -23,4 +23,4 @@ class DogAgent(BaseAgent):
 
     def respond(self, symptom: str) -> str:
         prompt = self.build_prompt(symptom=symptom)
-        return super().respond(system_prompt=hundliche_wahrnehmung, prompt=prompt)
+        return super().respond(system_prompt=system_prompt_dog, prompt=prompt)

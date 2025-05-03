@@ -4,7 +4,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 from typing import List, Literal
 
-from src.prompts.prompt_hundliche_wahrnehmung import hundliche_wahrnehmung
+from src.prompts.system_prompt_dog import system_prompt_dog
 from src.prompts.system_prompt_diagnose import diagnose_instinktklassifikation
 
 
@@ -24,7 +24,7 @@ INSTINCT_FUNCTION_DEF = {
 }
 
 def classify_instincts(text: str, client: OpenAI) -> InstinctClassification:
-    system_prompt = hundliche_wahrnehmung + "\n\n" + diagnose_instinktklassifikation
+    system_prompt = system_prompt_dog + "\n\n" + diagnose_instinktklassifikation
 
     response = client.chat.completions.create(
         model="gpt-4",
