@@ -1,5 +1,3 @@
-# src/orchestrator/flow_orchestrator.py
-
 import os
 from openai import OpenAI
 
@@ -9,14 +7,11 @@ from src.agents.coach_agent import CoachAgent
 from src.agents.companion_agent import CompanionAgent
 from src.agents.trainer_agent import TrainerAgent
 
-from src.services.instinct_classifier import InstinctClassification
 from src.services.retrieval import get_symptom_info
-
 from src.state.session_store import (
     create_session,
     append_message,
     get_last_message,
-    session_exists
 )
 
 
@@ -26,7 +21,7 @@ class FlowOrchestrator:
         self.dog = DogAgent()
         self.mentor = MentorAgent()
         self.coach = CoachAgent()
-        self.companion = CompanionAgent()
+        self.companion = CompanionAgent(self.client)  # OpenAI-Client wird korrekt übergeben
         self.trainer = TrainerAgent()
 
     def run_initial_flow(self, symptom: str) -> dict:
@@ -44,62 +39,54 @@ class FlowOrchestrator:
         }
 
     def run_continued_flow(self, session_id: str, user_answer: str) -> dict:
-        if not session_exists(session_id):
-            raise ValueError("Session-ID ist ungültig.")
-
         append_message(session_id, "user", user_answer)
 
-        # 🛠 SymptomInfo-Objekt laden
+        # Coach fragt nach oder erstellt Diagnose
+        coach_reply = self.coach.respond(session_id, user_answer, self.client)
+        append_message(session_id, "coach", coach_reply)
+
+        if "diagnosis" not in coach_reply:
+            return {
+                "session_id": session_id,
+                "messages": [
+                    {"sender": "coach", "text": coach_reply}
+                ]
+            }
+
+        # Mentor erklärt die Diagnose
+        diagnosis = coach_reply["diagnosis"]
+        mentor_reply = self.mentor.respond(diagnosis, user_answer)
+        append_message(session_id, "mentor", mentor_reply)
+
+        # Trainingsplan von Trainer
         symptom_info = get_symptom_info(user_answer)
+        trainer_reply = self.trainer.respond(symptom_info, diagnosis)
+        append_message(session_id, "trainer", trainer_reply)
 
-        # 🧠 Coach analysiert anhand der Weaviate-Daten + GPT
-        coach_reply = self.coach.respond(session_id, symptom_info, self.client)
+        # Companion reflektiert Beziehungsebene
+        messages_so_far = [
+            get_last_message(session_id, role)
+            for role in ["dog", "coach", "mentor", "trainer"]
+        ]
+        messages_so_far = [m["text"] for m in messages_so_far if m]
 
-        messages = []
-
-        if isinstance(coach_reply, dict):
-            if "question" in coach_reply:
-                question = coach_reply["question"]
-                messages.append({
-                "sender": "coach",
-                "text": question 
-                })
-            elif "diagnosis" in coach_reply:
-                diagnosis = coach_reply["diagnosis"]
-                instinkt = diagnosis.get("instinkt", "unbekannt")
-                messages.append({
-                    "sender": "coach",
-                    "text": f"Danke für deine Antworten. Ich vermute, dass der Instinkt '{instinkt}' eine zentrale Rolle spielt. Ich gebe weiter an den Mentor."
-                })
-
-                # Mentor erklärt Diagnose
-                mentor_response = self.mentor.respond(
-                    symptom=user_answer,
-                    instinct_data=diagnosis
-                )
-                messages.append({
-                    "sender": "mentor",
-                    "text": mentor_response
-                })
-
-                # Trainer leitet daraus Hilfe ab
-                trainer_response = self.trainer.respond(symptom_info)
-                messages.append({
-                    "sender": "trainer",
-                    "text": trainer_response
-                })
-
+        companion_reply = self.companion.respond(session_id, messages_so_far)
+        if companion_reply:
+            append_message(session_id, "companion", companion_reply)
+            all_messages = [
+                {"sender": "coach", "text": coach_reply},
+                {"sender": "mentor", "text": mentor_reply},
+                {"sender": "trainer", "text": trainer_reply},
+                {"sender": "companion", "text": companion_reply}
+            ]
         else:
-            # fallback für reine Textantwort
-            messages.append({
-                "sender": "coach",
-                "text": coach_reply
-            })
-
-        for msg in messages:
-            append_message(session_id, msg["sender"], msg["text"])
+            all_messages = [
+                {"sender": "coach", "text": coach_reply},
+                {"sender": "mentor", "text": mentor_reply},
+                {"sender": "trainer", "text": trainer_reply}
+            ]
 
         return {
             "session_id": session_id,
-            "messages": messages
+            "messages": all_messages
         }

@@ -2,31 +2,32 @@
 
 from openai import OpenAI
 from src.agents.base_agent import BaseAgent
-from src.services.retrieval import get_symptom_info
 from src.prompts.system_prompt_coach import system_prompt_coach
-
+from src.services.retrieval import get_symptom_info, get_instinkt_rueckfrage
+from src.services.instinct_classifier import classify_instincts
 
 class CoachAgent(BaseAgent):
-    def __init__(self, client: OpenAI):
-        super().__init__("Coach")
-        self.client = client
+    def __init__(self):
+        super().__init__(name="Coach")
 
-    def build_prompt(self, symptom_info: dict) -> str:
-        symptom_name = symptom_info.symptom_name
-        variants = symptom_info.instinktvarianten
+    def build_prompt(self, symptom_info, session_history=None):
+        """
+        Baut den Prompt, basierend auf der Diagnosephase:
+        - Wenn Instinkt unklar, stelle gezielte Rückfrage
+        - Wenn Diagnose klar, fasse Diagnose zusammen
+        """
+        if not symptom_info.instinktvarianten:
+            return "Ich konnte leider keine Instinktvarianten zu diesem Symptom finden."
 
-        prompt_lines = []
-        for v in variants:
-            frage = f"Wie verhält sich dein Hund in dieser Situation: {v.beschreibung.strip()}"
-            prompt_lines.append(f"- {frage} (Instinkt: {v.instinkt})")
+        # Wähle die erste passende Instinktvariante für Rückfrage (vereinfachter MVP-Fall)
+        instinktfrage = get_instinkt_rueckfrage(symptom_info.instinktvarianten)
+        if instinktfrage:
+            return instinktfrage
 
-        prompt = "\n".join(prompt_lines)
-        return prompt
+        # Fallback, falls keine passende Frage
+        return f"Wie genau zeigt sich das Verhalten '{symptom_info.symptom_name}' bei deinem Hund?"
 
-    def respond(self, session_id: str, symptom: str, client: OpenAI) -> str:
-        symptom_info = get_symptom_info(symptom)
+    def respond(self, session_id: str, user_input: str, client: OpenAI) -> str:
+        symptom_info = get_symptom_info(user_input)
         prompt = self.build_prompt(symptom_info)
-        return super().respond(
-            system_prompt=system_prompt_coach,
-            prompt=prompt
-        )
+        return super().respond(prompt=prompt, system_prompt=system_prompt_coach)

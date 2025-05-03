@@ -9,6 +9,7 @@ from weaviate.classes.init import Auth
 from weaviate.classes.query import MetadataQuery
 from src.models.symptom_models import SymptomInfo
 from src.models.breed_models import BreedInfo
+from random import choice
 
 def get_weaviate_client() -> weaviate.WeaviateClient:
     """
@@ -121,3 +122,16 @@ def get_hundewissen(symptom_input: str, top_k: int = 3) -> list[str]:
         obj.properties["beschreibung"]
         for obj in response.objects
     ]
+
+
+def get_instinkt_rueckfrage(info: SymptomInfo) -> dict:
+    """
+    Wählt eine Rückfrage aus den Instinktvarianten des Symptoms.
+    Die Rückfrage basiert auf der Beschreibung pro Instinkt.
+    """
+    if not info.instinktvarianten:
+        return {"question": "Kannst du mir mehr über das Problem erzählen?", "instinkt": "unbekannt"}
+
+    variant = choice(info.instinktvarianten)
+    frage = f"Trifft das auf dein Erlebnis zu? {variant.beschreibung.strip()}"
+    return {"question": frage, "instinkt": variant.instinkt}
