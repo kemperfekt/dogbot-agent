@@ -3,6 +3,7 @@ from typing import Literal
 
 Status = Literal["enthalten", "nicht enthalten"]
 
+
 class ContextInfo(BaseModel):
     Ort: Status
     Beteiligte: Status
@@ -15,7 +16,7 @@ class ContextInfo(BaseModel):
     def normalize_status(cls, v: str) -> str:
         """
         Normalisiert GPT-Antworten auf gültige Statuswerte.
-        Erlaubt z. B. 'ja', 'nicht genannt' oder Varianten von 'enthalten'.
+        Erlaubt z.B. 'ja', 'nicht genannt' oder Varianten von 'enthalten'.
         """
         v = str(v).strip().lower()
         if "enthalten" in v or "ja" in v or "genannt" in v:

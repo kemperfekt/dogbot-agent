@@ -55,14 +55,14 @@ class CoachAgent(BaseAgent):
             question=f"Wie genau zeigt sich das Verhalten '{symptom_info.symptom_name}' bei deinem Hund?"
         )
 
-    def respond(self, session_id: str, user_input: str, client: OpenAI) -> str:
+    def respond(self, session_id: str, user_input: str, client: OpenAI) -> AgentMessage:
         symptom_info = get_symptom_info(user_input)
         msg: AgentMessage = self.build_prompt(symptom_info, user_input, client)
 
-    # Direkte Übergabe an BaseAgent für LLM-Output (nur wenn 'text' leer ist)
+        # Direkte Übergabe an BaseAgent für LLM-Output (nur wenn 'text' leer ist)
         if not msg.text and msg.question:
             # Frage durch LLM formulieren
-            return super().respond(prompt=msg.question, system_prompt=system_prompt_coach, client=client).model_dump_json()
+            return super().respond(prompt=msg.question, system_prompt=system_prompt_coach, client=client)
 
         # Wenn Diagnose oder fertiger Text vorliegt, direkt zurückgeben
-        return msg.model_dump_json()
+        return msg

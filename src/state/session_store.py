@@ -1,8 +1,7 @@
-# src/state/session_store.py
-
 import uuid
 from typing import Dict, List
 from src.orchestrator.states import DialogState
+from src.models.agent_models import AgentMessage
 
 SessionData = Dict[str, Dict[str, any]]
 _store: Dict[str, Dict] = {}
@@ -19,9 +18,9 @@ def create_session() -> str:
     }
     return session_id
 
-def append_message(session_id: str, sender: str, text: str) -> None:
+def append_message(session_id: str, message: AgentMessage) -> None:
     if session_id in _store:
-        _store[session_id]["history"].append({"sender": sender, "text": text})
+        _store[session_id]["history"].append(message.model_dump())
     else:
         raise KeyError(f"Session {session_id} existiert nicht.")
 

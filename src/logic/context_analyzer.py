@@ -2,6 +2,7 @@ from openai import OpenAI
 import json
 from src.models.context_models import ContextInfo
 
+
 class ContextAnalyzer:
     """
     Nutzt GPT, um zu prüfen, ob folgende Kontextelemente in einer Nutzernachricht enthalten sind:
@@ -18,13 +19,13 @@ class ContextAnalyzer:
     Du hilfst dabei, die Situation eines Hundeverhaltens besser zu verstehen.
     Analysiere die folgende Nachricht und bewerte, ob die folgenden Aspekte bereits erwähnt oder erkennbar sind:
 
-    - Ort (z. B. Straße, Wohnung, Wald)
+    - Ort (z.\u202fB. Stra\u00dfe, Wohnung, Wald)
     - Beteiligte (andere Menschen oder Tiere)
     - Zeit_davor (was kurz vorher passiert ist)
     - Zeit_danach (was danach passiert ist)
     - Ressourcen (Spielzeug, Futter, Objekt, Leckerli etc.)
 
-    Gib deine Antwort **ausschließlich** im folgenden JSON-Format zurück:
+    Gib deine Antwort **ausschlie\u00dflich** im folgenden JSON-Format zur\u00fcck:
     {
       "Ort": "...",
       "Beteiligte": "...",
@@ -50,7 +51,7 @@ class ContextAnalyzer:
         )
         try:
             raw = json.loads(response.choices[0].message.content)
-            return ContextInfo(**raw)
+            return ContextInfo.model_validate(raw)
         except Exception:
             return ContextInfo.model_construct(
                 Ort="nicht enthalten",

@@ -4,6 +4,7 @@ from src.prompts.system_prompt_dog import system_prompt_dog
 from src.services.retrieval import get_hundewissen
 from src.models.agent_models import AgentMessage
 
+
 class DogAgent(BaseAgent):
     def __init__(self):
         super().__init__("dog")
@@ -19,7 +20,6 @@ class DogAgent(BaseAgent):
             f"Stelle zum Schluss die Frage, ob der Mensch mehr über die Ursachen deines Verhaltens wissen will."
         )
 
-    def respond(self, symptom: str, client: OpenAI) -> str:
+    def respond(self, symptom: str, client: OpenAI) -> AgentMessage:
         prompt = self.build_prompt(symptom=symptom)
-        message = super().respond(system_prompt=system_prompt_dog, prompt=prompt, client=client)
-        return message.text or ""
+        return super().respond(system_prompt=system_prompt_dog, prompt=prompt, client=client)
