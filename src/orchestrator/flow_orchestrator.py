@@ -17,7 +17,7 @@ class FlowOrchestrator:
         session_id = create_session()
 
         # Hund antwortet auf Symptom
-        dog_response = self.dog.respond(symptom)
+        dog_response = self.dog.respond(symptom, self.client)
         append_message(session_id, "dog", dog_response)
 
         return {
