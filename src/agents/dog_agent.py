@@ -1,17 +1,14 @@
-# src/agents/dog_agent.py
-
 from src.agents.base_agent import BaseAgent
 from src.prompts.system_prompt_dog import system_prompt_dog
 from src.services.retrieval import get_hundewissen
+from src.models.agent_models import AgentMessage
 
 class DogAgent(BaseAgent):
     def __init__(self):
         super().__init__("Hund")
 
     def build_prompt(self, symptom: str) -> str:
-        # Inhalte aus Weaviate holen (z. B. chunks zur Hundeperspektive)
         fachwissen = get_hundewissen(symptom)
-
         return (
             f"{system_prompt_dog}\n\n"
             f"Das hier sind Eindrücke, die du als Hund kennst:\n"
@@ -23,4 +20,5 @@ class DogAgent(BaseAgent):
 
     def respond(self, symptom: str) -> str:
         prompt = self.build_prompt(symptom=symptom)
-        return super().respond(system_prompt=system_prompt_dog, prompt=prompt)
+        text = super().respond(system_prompt=system_prompt_dog, prompt=prompt)
+        return text  # FlowOrchestrator wandelt in AgentMessage um

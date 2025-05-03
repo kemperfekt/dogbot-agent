@@ -1,15 +1,11 @@
-# src/orchestrator/flow_orchestrator.py
-
 import os
 from openai import OpenAI
 
 from src.agents.dog_agent import DogAgent
 from src.agents.coach_agent import CoachAgent
 from src.services.retrieval import get_symptom_info
-from src.state.session_store import (
-    create_session,
-    append_message,
-)
+from src.state.session_store import create_session, append_message
+from src.models.agent_models import AgentMessage
 
 class FlowOrchestrator:
     def __init__(self):
@@ -27,7 +23,7 @@ class FlowOrchestrator:
         return {
             "session_id": session_id,
             "messages": [
-                {"sender": "dog", "text": dog_response}
+                AgentMessage(sender="dog", text=dog_response)
             ]
         }
 
@@ -38,9 +34,12 @@ class FlowOrchestrator:
         coach_reply = self.coach.respond(session_id, user_answer, self.client)
         append_message(session_id, "coach", coach_reply)
 
+        try:
+            parsed = AgentMessage.model_validate_json(coach_reply)
+        except Exception:
+            parsed = AgentMessage(sender="coach", text=coach_reply)
+
         return {
             "session_id": session_id,
-            "messages": [
-                {"sender": "coach", "text": coach_reply}
-            ]
+            "messages": [parsed]
         }

@@ -126,12 +126,24 @@ def get_hundewissen(symptom_input: str, top_k: int = 3) -> list[str]:
 
 def get_instinkt_rueckfrage(info: SymptomInfo) -> dict:
     """
-    Wählt eine Rückfrage aus den Instinktvarianten des Symptoms.
-    Die Rückfrage basiert auf der Beschreibung pro Instinkt.
+    Leitet eine alltagssprachliche Rückfrage aus den Instinkt-Beschreibungen ab.
+    Ziel: Kein Fachbegriff, sondern natürliche Hypothese mit Einladung zur Bestätigung.
     """
     if not info.instinktvarianten:
-        return {"question": "Kannst du mir mehr über das Problem erzählen?", "instinkt": "unbekannt"}
+        return {
+            "question": "Kannst du mir mehr über das Problem erzählen?",
+            "instinkt": "unbekannt"
+        }
 
     variant = choice(info.instinktvarianten)
-    frage = f"Trifft das auf dein Erlebnis zu? {variant.beschreibung.strip()}"
-    return {"question": frage, "instinkt": variant.instinkt}
+    beschreibung = variant.beschreibung.strip()
+
+    frage = (
+        f"Manche Hunde verhalten sich in solchen Situationen so: {beschreibung} "
+        f"Könnte das auch auf deinen Hund zutreffen?"
+    )
+
+    return {
+        "question": frage,
+        "instinkt": variant.instinkt
+    }

@@ -1,24 +1,19 @@
-# src/agents/base_agent.py
-
 from abc import ABC, abstractmethod
 from openai import OpenAI
-import os
+from src.models.agent_models import AgentMessage
 
 class BaseAgent(ABC):
     def __init__(self, name: str):
         self.name = name
-        self.client = OpenAI(api_key=os.getenv("OPENAIAPIKEY"))
 
-    @abstractmethod
-    def build_prompt(self, **kwargs) -> str:
-        ...
-
-    def respond(self, system_prompt: str, prompt: str) -> str:
-        response = self.client.chat.completions.create(
+    def respond(self, prompt: str, system_prompt: str, client: OpenAI) -> AgentMessage:
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
-            ]
+            ],
+            temperature=0.5
         )
-        return response.choices[0].message.content.strip()
+        text = response.choices[0].message.content.strip()
+        return AgentMessage(sender=self.name.lower(), text=text)
