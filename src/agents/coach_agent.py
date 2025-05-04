@@ -5,7 +5,7 @@ from src.agents.base_agent import BaseAgent
 from src.prompts.system_prompt_coach import system_prompt_coach
 from src.models.agent_models import AgentMessage
 from src.state.session_store import get_history
-from src.services.retrieval import get_instinktwissen
+from src.services.retrieval import get_instinktwissen, get_erste_hilfe
 
 
 class CoachAgent(BaseAgent):
@@ -17,19 +17,8 @@ class CoachAgent(BaseAgent):
         )
         self.question_text = "Hast Du Lust, einen Blick auf den Trainingsplan zu werfen?"
 
-    def respond(self, session_id: str, user_input: str, client: OpenAI) -> AgentMessage:
-        # Prüfen, ob User erst begrüßt werden soll
+    def respond(self, session_id: str, user_input: str, client: OpenAI) -> list[AgentMessage]:
         history = get_history(session_id)
-        coach_messages = [m for m in history if m.sender == self.name]
-
-        if not coach_messages:
-            # Erste Nachricht vom Coach: nur Begrüßung
-            return AgentMessage(sender=self.name, text=self.intro_text)
-
-        if user_input.strip().lower() not in ["ja", "okay", "ok", "gern", "los", "klar"]:
-            return AgentMessage(sender=self.name, text="Sag einfach Bescheid, wenn wir loslegen sollen.")
-
-        # GPT-Antwort starten
         symptom = self._extract_last_user_symptom(history)
         fachwissen = self._extract_last_dog_message(history)
         instinktvarianten = get_instinktwissen(symptom)
@@ -43,29 +32,60 @@ class CoachAgent(BaseAgent):
             ],
         )
         answer = response.choices[0].message.content.strip()
-        full_answer = f"{answer}\n\n{self.question_text}"
-        return AgentMessage(sender=self.name, text=full_answer)
+        return [AgentMessage(sender=self.name, text=answer)]
+
+    def give_training(self, session_id: str, user_input: str, client: OpenAI) -> list[AgentMessage]:
+        history = get_history(session_id)
+        symptom = self._extract_last_user_symptom(history)
+        fachwissen = self._extract_last_dog_message(history)
+        instinktvarianten = get_instinktwissen(symptom)
+
+        # Führenden Instinkt wählen (hier einfach den ersten mit Inhalt)
+        fuehrend = next((v["instinkt"] for v in instinktvarianten if v["beschreibung"]), "unbekannt")
+        erste_hilfe = get_erste_hilfe(fuehrend, symptom)
+
+        prompt = (
+            f"Symptom: {symptom}\n"
+            f"Fachwissen Hund: {fachwissen}\n"
+            f"Führende Instinktvariante: {fuehrend}\n"
+            f"Maßnahme aus Datenbank: {erste_hilfe}\n\n"
+            "Wie kann ich diese Maßnahme verständlich und motivierend erklären?"
+        )
+
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_prompt_coach},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        answer = response.choices[0].message.content.strip()
+        return [AgentMessage(sender=self.name, text=answer)]
 
     def _extract_last_user_symptom(self, history: list[AgentMessage]) -> str:
-        user_msgs = [m.text for m in history if m.sender == "user"]
-        return user_msgs[0] if user_msgs else "(kein Symptom gefunden)"
+        for msg in reversed(history):
+            if msg.sender == "user":
+                return msg.text.strip()
+        return "(kein Symptom gefunden)"
 
     def _extract_last_dog_message(self, history: list[AgentMessage]) -> str:
-        dog_msgs = [m.text for m in history if m.sender == "dog"]
-        return dog_msgs[-1] if dog_msgs else "(kein Hundetext gefunden)"
+        for msg in reversed(history):
+            if msg.sender == "dog":
+                return msg.text.strip()
+        return "(keine Hundeperspektive gefunden)"
 
-    def _build_prompt(self, symptom: str, instinktvarianten: dict, fachwissen: str) -> str:
-        jagd = instinktvarianten.get("jagd", "")
-        rudel = instinktvarianten.get("rudel", "")
-        territorial = instinktvarianten.get("territorial", "")
-        sexual = instinktvarianten.get("sexual", "")
+    def _build_prompt(self, symptom: str, instinktwissen: list[dict], fachwissen: str) -> str:
+        jagd = next((v["beschreibung"] for v in instinktwissen if v["instinkt"] == "jagd"), "")
+        rudel = next((v["beschreibung"] for v in instinktwissen if v["instinkt"] == "rudel"), "")
+        territorial = next((v["beschreibung"] for v in instinktwissen if v["instinkt"] == "territorial"), "")
+        sexual = next((v["beschreibung"] for v in instinktwissen if v["instinkt"] == "sexual"), "")
+
         return (
-            f"Das Symptom lautet: {symptom}\n\n"
-            f"Hier ist der emotionale Hundetext:\n{fachwissen}\n\n"
-            f"Instinkt-Wissen:\n"
-            f"- Jagdtrieb: {jagd}\n"
-            f"- Rudeltrieb: {rudel}\n"
-            f"- Territorialtrieb: {territorial}\n"
-            f"- Sexualtrieb: {sexual}\n\n"
-            f"Bitte identifiziere den führenden Instinkt und erkläre ihn fachlich fundiert."
+            f"Symptom: {symptom}\n"
+            f"Hundeperspektive: {fachwissen}\n\n"
+            f"Instinktvariante jagd: {jagd}\n"
+            f"Instinktvariante rudel: {rudel}\n"
+            f"Instinktvariante territorial: {territorial}\n"
+            f"Instinktvariante sexual: {sexual}\n\n"
+            "Welcher Instinkt ist am wahrscheinlichsten führend? Bitte erkläre es verständlich."
         )

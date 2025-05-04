@@ -1,77 +1,59 @@
 # --- src/services/retrieval.py ---
 
-from weaviate.classes.query import MetadataQuery
-from src.services.weaviate_client import get_weaviate_client
+from weaviate.collections.classes.config import MetadataQuery
+from weaviate import WeaviateClient
+from typing import List, Dict
+import os
 
+INSTINKT_KLASSEN = [
+    "Jagdinstinkt",
+    "Territorialinstinkt",
+    "Rudelinstinkt",
+    "Sexualinstinkt",
+]
 
-def weaviate_query(query: dict) -> list[dict]:
+def get_weaviate_client() -> WeaviateClient:
+    from weaviate import connect_to_local
+    return connect_to_local()
+
+def weaviate_query(query: str, limit: int = 1) -> str:
     client = get_weaviate_client()
-    class_name = query["class"]
-    properties = query["properties"]
-    limit = query.get("limit", 1)
-
-    collection = client.collections.get(class_name)
-
-    if "nearText" in query:
-        response = collection.query.near_text(
-            query=query["nearText"]["concepts"][0],
+    try:
+        collection = client.collections.get("Symptom")
+        result = collection.query.near_text(
+            query=query,
             limit=limit,
-            return_metadata=MetadataQuery(distance=True)
+            return_metadata=MetadataQuery(distance=True),
         )
-    else:
-        response = collection.query.fetch_objects(limit=limit)
+        if result.objects:
+            return result.objects[0].properties.get("instinkt_varianten", "")
+        return ""
+    finally:
+        client.close()
 
-    client.close()
-    return [obj.properties for obj in response.objects]
+def get_instinktwissen(symptom: str) -> List[Dict[str, str]]:
+    client = get_weaviate_client()
+    beschreibungen = []
 
+    try:
+        for klasse in INSTINKT_KLASSEN:
+            try:
+                collection = client.collections.get(klasse)
+                result = collection.query.near_text(
+                    query=symptom,
+                    limit=1,
+                    return_metadata=MetadataQuery(distance=True),
+                )
+                if result.objects:
+                    obj = result.objects[0]
+                    beschreibung = obj.properties["beschreibung"] if obj.properties and "beschreibung" in obj.properties else ""
+                    beschreibungen.append({
+                        "instinkt": klasse.replace("instinkt", "").lower(),
+                        "beschreibung": beschreibung.strip()
+                    })
+            except Exception as e:
+                print(f"⚠️ Fehler bei Abfrage von {klasse}: {e}")
+    finally:
+        client.close()
 
-def get_schnelldiagnose(symptom: str) -> str:
-    query = {
-        "class": "Symptom",
-        "properties": ["beschreibung"],
-        "nearText": {
-            "concepts": [symptom],
-            "certainty": 0.7
-        },
-        "limit": 1
-    }
-    result = weaviate_query(query)
-    if result and "beschreibung" in result[0]:
-        return result[0]["beschreibung"]
-    return "(keine passende Beschreibung gefunden)"
-
-
-def get_instinktwissen(symptom: str) -> dict:
-    query = {
-        "class": "Symptom",
-        "properties": ["instinkt_varianten"],
-        "nearText": {
-            "concepts": [symptom],
-            "certainty": 0.7
-        },
-        "limit": 1
-    }
-    result = weaviate_query(query)
-    if result and "instinkt_varianten" in result[0]:
-        variants = result[0]["instinkt_varianten"]
-        return {
-            key: variants.get(key, "")
-            for key in ["territorial", "jagd", "rudel", "sexual"]
-        }
-    return {}
-
-
-def get_erste_hilfe(instinkt: str, symptom: str) -> str:
-    query = {
-        "class": "ErsteHilfe",
-        "properties": ["text"],
-        "nearText": {
-            "concepts": [instinkt, symptom],
-            "certainty": 0.65
-        },
-        "limit": 1
-    }
-    result = weaviate_query(query)
-    if result and "text" in result[0]:
-        return result[0]["text"]
-    return "(keine Erste-Hilfe-Maßnahme gefunden)"
+    return beschreibungen

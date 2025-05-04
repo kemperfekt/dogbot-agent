@@ -27,3 +27,9 @@ class FlowContinueRequest(BaseModel):
 
 class FlowContinueResponse(BaseModel):
     messages: List[AgentMessage]
+
+
+
+class InstinktEintrag(BaseModel):
+    instinkt: str
+    beschreibung: str
