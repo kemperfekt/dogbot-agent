@@ -1,9 +1,6 @@
-# --- src/agents/dog_agent.py ---
-
 from openai import OpenAI
 from src.agents.base_agent import BaseAgent
 from src.prompts.system_prompt_dog import system_prompt_dog
-from src.services.retrieval import get_schnelldiagnose
 from src.models.agent_models import AgentMessage
 
 
@@ -13,11 +10,16 @@ class DogAgent(BaseAgent):
         self.greeting_text = "Wuff! Schön, dass du hier bist. Beschreibe ein Verhalten von mir und ich erkläre es dir!"
         self.question_text = "Möchtest du erfahren, warum ich mich so verhalte und wie ich mein Verhalten ändern kann?"
 
+    def introduce(self) -> AgentMessage:
+        return AgentMessage(
+            sender=self.name,
+            text=self.greeting_text
+        )
+    
     def build_prompt(self, symptom: str) -> str:
-        schnelldiagnose = get_schnelldiagnose(symptom)
         return (
             f"Hier ist meine Sicht auf das, was passiert:\n"
-            f"{schnelldiagnose}\n\n"
+            f"{symptom} fühlt sich für mich sehr belastend an. Es passiert nicht einfach so – ich spüre da etwas ganz Starkes.\n\n"
             f"Sprich in meiner Stimme – freundlich, emotional und nahbar. "
             f"Keine Fachbegriffe. Beschreibe, wie es sich für mich anfühlt. "
             f"Keine Besserwisserei. Formuliere höchstens zwei Absätze, aber stelle am Ende **keine Rückfrage.**"

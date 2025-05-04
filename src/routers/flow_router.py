@@ -28,20 +28,21 @@ def ensure_dict_list(messages: list) -> list[dict]:
 
 @router.post("/flow_intro", response_model=FlowIntroResponse)
 def flow_intro():
-    result = orchestrator.run_intro_only()
-    messages = ensure_dict_list(result["messages"])
-    return FlowIntroResponse(session_id=result["session_id"], messages=messages)
+    session_id = "sess_" + orchestrator._generate_session_id()
+    result = orchestrator.run_intro(session_id)
+    messages = ensure_dict_list(result.messages)
+    return FlowIntroResponse(session_id=result.session_id, messages=messages)
 
 
 @router.post("/flow_start", response_model=FlowStartResponse)
 def start_flow(request: FlowStartRequest):
-    result = orchestrator.run_initial_flow(request.symptom, request.session_id)
-    messages = ensure_dict_list(result["messages"])
-    return FlowStartResponse(session_id=result["session_id"], messages=messages)
+    result = orchestrator.run_start_flow(request)
+    messages = ensure_dict_list(result.messages)
+    return FlowStartResponse(session_id=result.session_id, messages=messages)
 
 
 @router.post("/flow_continue", response_model=FlowContinueResponse)
 def continue_flow(request: FlowContinueRequest):
     result = orchestrator.run_continued_flow(request.session_id, request.answer)
-    messages = ensure_dict_list(result["messages"])
+    messages = ensure_dict_list(result.messages)
     return FlowContinueResponse(messages=messages)

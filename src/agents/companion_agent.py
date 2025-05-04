@@ -12,6 +12,12 @@ class CompanionAgent(BaseAgent):
         self.intro_text = "Ich bin dein treuer Begleiter auf diesem Weg."
         self.question_text = "Willst du diesen Weg gemeinsam mit mir weitergehen?"
 
+    def introduce(self) -> AgentMessage:
+        return AgentMessage(
+            sender=self.name,
+            text=self.intro_text
+        )
+
     def build_prompt(self, session_id: str) -> str:
         history = get_history(session_id)
         breed = extract_breed_from_history(history)

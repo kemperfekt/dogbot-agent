@@ -10,16 +10,15 @@ _store: dict[str, dict[str, Any]] = {}
 DEFAULT_STATE = SessionState.WAITING_FOR_SYMPTOM
 
 
-def create_session() -> str:
+def create_session(session_id: str):
     """
-    Erstellt eine neue Session mit leerem Verlauf und initialem FSM-Zustand.
+    Erstellt eine Session mit gegebener ID, falls sie noch nicht existiert.
     """
-    session_id = str(uuid.uuid4())
-    _store[session_id] = {
-        "history": [],
-        "state": DEFAULT_STATE.value
-    }
-    return session_id
+    if session_id not in _store:
+        _store[session_id] = {
+            "history": [],
+            "state": DEFAULT_STATE.value
+        }
 
 
 def session_exists(session_id: str) -> bool:
@@ -33,6 +32,14 @@ def append_message(session_id: str, message: AgentMessage | dict):
     if isinstance(message, AgentMessage):
         message = message.model_dump()
     _store[session_id]["history"].append(message)
+
+
+def save_messages(session_id: str, messages: list[AgentMessage]):
+    """
+    Speichert mehrere Nachrichten in einer Session-History.
+    """
+    for msg in messages:
+        append_message(session_id, msg)
 
 
 def get_history(session_id: str) -> list[AgentMessage]:

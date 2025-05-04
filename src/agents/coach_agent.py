@@ -1,5 +1,3 @@
-# --- src/agents/coach_agent.py ---
-
 from openai import OpenAI
 from src.agents.base_agent import BaseAgent
 from src.prompts.system_prompt_coach import system_prompt_coach
@@ -16,6 +14,12 @@ class CoachAgent(BaseAgent):
             "Zuerst erstelle ich die Diagnose, wollen wir loslegen?"
         )
         self.question_text = "Hast Du Lust, einen Blick auf den Trainingsplan zu werfen?"
+
+    def introduce(self) -> AgentMessage:
+        return AgentMessage(
+            sender=self.name,
+            text=self.intro_text
+        )
 
     def respond(self, session_id: str, user_input: str, client: OpenAI) -> list[AgentMessage]:
         history = get_history(session_id)
@@ -81,11 +85,13 @@ class CoachAgent(BaseAgent):
         sexual = next((v["beschreibung"] for v in instinktwissen if v["instinkt"] == "sexual"), "")
 
         return (
-            f"Symptom: {symptom}\n"
-            f"Hundeperspektive: {fachwissen}\n\n"
+            f"Verschaffe Dir einen Eindruck aus Sicht des Menschen: {symptom}\n"
+            f"Danach aus Sicht des Hundes: {fachwissen}\n\n"
             f"Instinktvariante jagd: {jagd}\n"
             f"Instinktvariante rudel: {rudel}\n"
             f"Instinktvariante territorial: {territorial}\n"
             f"Instinktvariante sexual: {sexual}\n\n"
-            "Welcher Instinkt ist am wahrscheinlichsten führend? Bitte erkläre es verständlich."
+            "Welche Variante passt am besten? Wenn zwei Varianten infrage kommen, nenne beide.\n"
+            "Wenn keine passt, sage das offen.\n\n"
+            "Gib in jedem Fall die passende Erste Hilfe aus."
         )

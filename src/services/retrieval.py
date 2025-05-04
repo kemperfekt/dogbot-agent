@@ -1,9 +1,8 @@
-# --- src/services/retrieval.py ---
-
-from weaviate.collections.classes.config import MetadataQuery
 from weaviate import WeaviateClient
 from typing import List, Dict
 import os
+
+from src.services.weaviate_client import get_weaviate_client
 
 INSTINKT_KLASSEN = [
     "Jagdinstinkt",
@@ -12,10 +11,6 @@ INSTINKT_KLASSEN = [
     "Sexualinstinkt",
 ]
 
-def get_weaviate_client() -> WeaviateClient:
-    from weaviate import connect_to_local
-    return connect_to_local()
-
 def weaviate_query(query: str, limit: int = 1) -> str:
     client = get_weaviate_client()
     try:
@@ -23,7 +18,7 @@ def weaviate_query(query: str, limit: int = 1) -> str:
         result = collection.query.near_text(
             query=query,
             limit=limit,
-            return_metadata=MetadataQuery(distance=True),
+            return_metadata=["distance"],
         )
         if result.objects:
             return result.objects[0].properties.get("instinkt_varianten", "")
@@ -33,27 +28,38 @@ def weaviate_query(query: str, limit: int = 1) -> str:
 
 def get_instinktwissen(symptom: str) -> List[Dict[str, str]]:
     client = get_weaviate_client()
-    beschreibungen = []
-
     try:
-        for klasse in INSTINKT_KLASSEN:
-            try:
-                collection = client.collections.get(klasse)
-                result = collection.query.near_text(
-                    query=symptom,
-                    limit=1,
-                    return_metadata=MetadataQuery(distance=True),
-                )
-                if result.objects:
-                    obj = result.objects[0]
-                    beschreibung = obj.properties["beschreibung"] if obj.properties and "beschreibung" in obj.properties else ""
-                    beschreibungen.append({
-                        "instinkt": klasse.replace("instinkt", "").lower(),
-                        "beschreibung": beschreibung.strip()
-                    })
-            except Exception as e:
-                print(f"⚠️ Fehler bei Abfrage von {klasse}: {e}")
+        collection = client.collections.get("Symptom")
+        result = collection.query.near_text(
+            query=symptom,
+            limit=1,
+            return_metadata=["distance"]
+        )
+        if result.objects:
+            variants = result.objects[0].properties.get("instinkt_varianten", {})
+            return [
+                {"instinkt": key, "beschreibung": variants[key]}
+                for key in ["jagd", "rudel", "territorial", "sexual"]
+                if key in variants
+            ]
+        return []
     finally:
         client.close()
 
-    return beschreibungen
+def get_erste_hilfe(instinkt: str, symptom: str) -> str:
+    client = get_weaviate_client()
+    try:
+        collection = client.collections.get("ErsteHilfe")
+        result = collection.query.near_text(
+            query=f"{instinkt} {symptom}",
+            limit=1,
+        )
+        if result.objects:
+            eintrag = result.objects[0].properties.get("text", "")
+            return eintrag.strip()
+        return "(keine Maßnahme gefunden)"
+    except Exception as e:
+        print(f"⚠️ Fehler bei Erste-Hilfe-Abfrage: {e}")
+        return "(Fehler bei Abfrage)"
+    finally:
+        client.close()
