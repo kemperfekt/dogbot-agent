@@ -1,16 +1,21 @@
-# src/models/flow_models.py
+from pydantic import BaseModel
+from typing import List
+from src.models.agent_models import AgentMessage
 
-from pydantic import BaseModel, ConfigDict, Field
 
-class DiagnoseStart(BaseModel):
-    symptom_input: str
+class FlowStartRequest(BaseModel):
+    symptom: str
 
-class DiagnoseContinue(BaseModel):
+
+class FlowStartResponse(BaseModel):
     session_id: str
-    answer: str = Field(alias="answer")
+    messages: List[AgentMessage]
 
-    model_config = ConfigDict(populate_by_name=True)
 
-    @property
-    def message(self) -> str:
-        return self.answer
+class FlowContinueRequest(BaseModel):
+    session_id: str
+    answer: str
+
+
+class FlowContinueResponse(BaseModel):
+    messages: List[AgentMessage]

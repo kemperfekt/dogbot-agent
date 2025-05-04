@@ -1,49 +1,38 @@
 import uuid
-from typing import Dict, List
-from src.orchestrator.states import DialogState
+from typing import Any
 from src.models.agent_models import AgentMessage
 
-SessionData = Dict[str, Dict[str, any]]
-_store: Dict[str, Dict] = {}
+# In-Memory-Store für Sessions (kann später durch Redis etc. ersetzt werden)
+_store: dict[str, dict[str, Any]] = {}
+
 
 def create_session() -> str:
     session_id = str(uuid.uuid4())
     _store[session_id] = {
-        "history": [],
-        "state": DialogState.START,
-        "diagnose_progress": {
-            "asked_instincts": [],
-            "symptom": None
-        }
+        "history": []
     }
     return session_id
 
-def append_message(session_id: str, message: AgentMessage) -> None:
-    if session_id in _store:
-        _store[session_id]["history"].append(message.model_dump())
-    else:
-        raise KeyError(f"Session {session_id} existiert nicht.")
-
-def get_history(session_id: str) -> List[Dict[str, str]]:
-    return _store.get(session_id, {}).get("history", [])
 
 def session_exists(session_id: str) -> bool:
     return session_id in _store
 
-def get_last_message(session_id: str) -> dict | None:
-    history = _store.get(session_id, {}).get("history", [])
-    return history[-1] if history else None
 
-def get_state(session_id: str) -> DialogState:
-    return _store.get(session_id, {}).get("state", DialogState.START)
+def append_message(session_id: str, message: AgentMessage | dict):
+    if isinstance(message, AgentMessage):
+        message = message.model_dump()
+    _store[session_id]["history"].append(message)
 
-def set_state(session_id: str, state: DialogState) -> None:
-    if session_id in _store:
-        _store[session_id]["state"] = state
 
-def get_diagnose_progress(session_id: str) -> Dict:
-    return _store[session_id].get("diagnose_progress", {"asked_instincts": [], "symptom": None})
-
-def set_diagnose_progress(session_id: str, progress: Dict) -> None:
-    if session_id in _store:
-        _store[session_id]["diagnose_progress"] = progress
+def get_history(session_id: str) -> list[AgentMessage]:
+    raw_history = _store.get(session_id, {}).get("history", [])
+    messages = []
+    for m in raw_history:
+        if isinstance(m, AgentMessage):
+            messages.append(m)
+        elif isinstance(m, dict):
+            try:
+                messages.append(AgentMessage(**m))
+            except Exception:
+                continue
+    return messages
