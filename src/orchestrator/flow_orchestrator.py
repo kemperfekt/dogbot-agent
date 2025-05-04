@@ -17,10 +17,6 @@ class FlowOrchestrator:
         self.coach = CoachAgent()
         self.companion = CompanionAgent()
 
-    def has_agent_spoken(self, session_id: str, agent: str) -> bool:
-        history = get_history(session_id)
-        return any(m.sender == agent for m in history)
-
     def run_intro_only(self) -> dict:
         session_id = create_session()
         greeting = AgentMessage(sender="dog", text=self.dog.greeting_text)
@@ -47,54 +43,23 @@ class FlowOrchestrator:
     def run_continued_flow(self, session_id: str, user_answer: str) -> dict:
         append_message(session_id, AgentMessage(sender="user", text=user_answer))
 
-        # Coach
-        messages = []
-        if not self.has_agent_spoken(session_id, "coach"):
-            coach_intro = AgentMessage(sender="coach", text=self.coach.intro_text)
-            append_message(session_id, coach_intro)
-            messages.append(coach_intro)
+        history = get_history(session_id)
+        coach_messages = [m for m in history if m.sender == "coach"]
+
+        # Fall 1: Coach hat sich noch nicht gemeldet → Begrüßung senden
+        if not coach_messages:
+            intro_msg = AgentMessage(sender="coach", text=self.coach.intro_text)
+            append_message(session_id, intro_msg)
+            return {
+                "session_id": session_id,
+                "messages": [intro_msg]
+            }
+
+        # Fall 2: Coach hat begrüßt, wartet auf Zustimmung → prüfe Eingabe im respond()
+        coach_msg = self.coach.respond(session_id=session_id, user_input=user_answer, client=self.client)
+        append_message(session_id, coach_msg)
 
         return {
             "session_id": session_id,
-            "messages": messages
+            "messages": [coach_msg]
         }
-
-        # Der Coach antwortet später auf Eingabe
-        # coach_msg = self.coach.respond(session_id, user_answer, self.client)
-        # coach_question = AgentMessage(sender="coach", text=self.coach.question_text)
-
-        # append_message(session_id, coach_msg)
-        # append_message(session_id, coach_question)
-
-        # Companion (vorerst deaktiviert)
-        # companion_intro = AgentMessage(sender="companion", text=self.companion.intro_text)
-        # companion_responses = self.companion.respond(session_id, self.client)
-
-        # if len(companion_responses) < 2:
-        #     raise ValueError("CompanionAgent lieferte weniger als 2 Nachrichten zurück.")
-
-        # companion_msg = companion_responses[1]
-        # companion_question = companion_responses[2] if len(companion_responses) > 2 else None
-
-        # append_message(session_id, companion_intro)
-        # append_message(session_id, companion_msg)
-        # if companion_question:
-        #     append_message(session_id, companion_question)
-
-        # return {
-        #     "session_id": session_id,
-        #     "messages": [
-        #         coach_intro,
-        #         coach_msg,
-        #         coach_question,
-        #         companion_intro,
-        #         companion_msg,
-        #         companion_question,
-        #     ] if companion_question else [
-        #         coach_intro,
-        #         coach_msg,
-        #         coach_question,
-        #         companion_intro,
-        #         companion_msg,
-        #     ]
-        # }
