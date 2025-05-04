@@ -1,9 +1,10 @@
-# src/agents/dog_agent.py
+# --- src/agents/dog_agent.py ---
 
 from openai import OpenAI
 from src.agents.base_agent import BaseAgent
 from src.prompts.system_prompt_dog import system_prompt_dog
-from src.services.retrieval import get_hundewissen
+from src.services.retrieval import get_schnelldiagnose
+from src.models.agent_models import AgentMessage
 
 
 class DogAgent(BaseAgent):
@@ -13,15 +14,20 @@ class DogAgent(BaseAgent):
         self.question_text = "Möchtest du erfahren, warum ich mich so verhalte und wie ich mein Verhalten ändern kann?"
 
     def build_prompt(self, symptom: str) -> str:
-        fachwissen = get_hundewissen(symptom)
+        schnelldiagnose = get_schnelldiagnose(symptom)
         return (
-            f"Hier sind ein paar Eindrücke aus meiner Sicht als Hund:\n"
-            f"{fachwissen}\n\n"
+            f"Hier ist meine Sicht auf das, was passiert:\n"
+            f"{schnelldiagnose}\n\n"
             f"Sprich in meiner Stimme – freundlich, emotional und nahbar. "
             f"Keine Fachbegriffe. Beschreibe, wie es sich für mich anfühlt. "
-            f"Keine Besserwisserei."
+            f"Keine Besserwisserei. Formuliere höchstens zwei Absätze, aber stelle am Ende **keine Rückfrage.**"
         )
 
-    def respond(self, symptom: str, client: OpenAI):
+    def respond(self, symptom: str, client: OpenAI) -> list[AgentMessage]:
         prompt = self.build_prompt(symptom=symptom)
-        return super().respond(system_prompt=system_prompt_dog, prompt=prompt, client=client)
+        return super().respond(
+            system_prompt=system_prompt_dog,
+            prompt=prompt,
+            client=client,
+            include_greeting=False
+        )

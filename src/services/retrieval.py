@@ -1,149 +1,76 @@
-# src/services/retrieval.py
+# --- src/services/retrieval.py ---
 
-import os
-from fastapi import HTTPException
-from typing import List
-from pydantic import ValidationError
-import weaviate
-from weaviate.classes.init import Auth
-from weaviate.classes.query import MetadataQuery
-from src.models.symptom_models import SymptomInfo
-from src.models.breed_models import BreedInfo
-from random import choice
+from weaviate.classes.query import MetadataQuery, Filter
+from src.services.weaviate_client import get_weaviate_client
 
-def get_weaviate_client() -> weaviate.WeaviateClient:
-    """
-    Stellt Verbindung zu Weaviate Cloud her – inklusive OpenAI-Key für Vektorisierung.
-    Erwartete Umgebungsvariablen:
-      - WEAVIATE_URL
-      - WEAVIATE_API_KEY
-      - OPENAIAPIKEY  ← ohne Unterstrich!
-    """
-    weaviate_url = os.getenv("WEAVIATE_URL")
-    weaviate_api_key = os.getenv("WEAVIATE_API_KEY")
-    openai_key = os.getenv("OPENAIAPIKEY")  # Muss exakt so heißen
 
-    if not weaviate_url:
-        raise HTTPException(status_code=500, detail="WEAVIATE_URL ist nicht gesetzt")
-    if not weaviate_api_key:
-        raise HTTPException(status_code=500, detail="WEAVIATE_API_KEY ist nicht gesetzt")
-    if not openai_key:
-        raise HTTPException(status_code=500, detail="OPENAIAPIKEY ist nicht gesetzt")
-
-    try:
-        client = weaviate.connect_to_weaviate_cloud(
-            cluster_url=weaviate_url,
-            auth_credentials=Auth.api_key(weaviate_api_key),
-            headers={"X-OpenAI-Api-Key": openai_key}  # exakt so!
-        )
-        if not client.is_ready():
-            raise RuntimeError("Weaviate-Cluster nicht erreichbar")
-        return client
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Weaviate-Verbindung fehlgeschlagen: {e}")
-
-def get_symptom_info(symptom_input: str) -> SymptomInfo:
-    """Führt eine Near-Text-Suche in der Collection 'Symptom' durch und gibt das Top-1-Ergebnis als SymptomInfo zurück."""
+def weaviate_query(query: dict) -> list[dict]:
     client = get_weaviate_client()
-    try:
-        coll = client.collections.get("Symptom")
-        response = coll.query.near_text(
-            query=symptom_input,
-            limit=1,
+    class_name = query["class"]
+    properties = query["properties"]
+    limit = query.get("limit", 1)
+
+    collection = client.collections.get(class_name)
+
+    if "filter" in query:
+        f = query["filter"]
+        filter_expr = Filter.by_property(f["path"][0]).equal(f["valueText"])
+        response = collection.query.fetch_objects(
+            filters=filter_expr,
+            limit=limit
+        )
+    elif "nearText" in query:
+        response = collection.query.near_text(
+            query=query["nearText"]["concepts"][0],
+            limit=limit,
             return_metadata=MetadataQuery(distance=True)
         )
-    except Exception as e:
-        client.close()
-        raise HTTPException(status_code=500, detail=f"Weaviate-Abfrage fehlgeschlagen: {e}")
+    else:
+        response = collection.query.fetch_objects(limit=limit)
 
-    client.close()
-    objs = response.objects
-    if not objs:
-        raise HTTPException(status_code=404, detail="Kein Symptom-Muster gefunden")
-
-    props = objs[0].properties
-    raw_variants = props.get("instinktvarianten") or {}
-    if isinstance(raw_variants, dict):
-        props["instinktvarianten"] = list(raw_variants.values())
-    elif not isinstance(raw_variants, list):
-        props["instinktvarianten"] = []
-
-    try:
-        symptom = SymptomInfo.model_validate(props)
-        return symptom
-    except ValidationError as e:
-        raise HTTPException(status_code=500, detail=f"SymptomInfo-Parsing fehlgeschlagen: {e}")
-
-def get_breed_info(breed: str) -> BreedInfo:
-    """Führt eine Near-Text-Suche in der Collection 'BreedGroup' durch und gibt das Top-1-Ergebnis als BreedInfo zurück."""
-    client = get_weaviate_client()
-    try:
-        coll = client.collections.get("BreedGroup")
-        response = coll.query.near_text(
-            query=breed,
-            limit=1,
-            return_metadata=MetadataQuery(distance=True)
-        )
-    except Exception as e:
-        client.close()
-        raise HTTPException(status_code=500, detail=f"Weaviate-Abfrage fehlgeschlagen: {e}")
-
-    client.close()
-    objs = response.objects
-    if not objs:
-        raise HTTPException(status_code=404, detail="Keine passende Rasse-Gruppe gefunden")
-    props = objs[0].properties
-
-    try:
-        breed_info = BreedInfo.model_validate(props)
-        return breed_info
-    except ValidationError as e:
-        raise HTTPException(status_code=500, detail=f"BreedInfo-Parsing fehlgeschlagen: {e}")
-
-def get_hundewissen(symptom_input: str, top_k: int = 3) -> list[str]:
-    """
-    Führt eine Near-Text-Suche in der Collection 'Hundeperspektive' durch.
-    Gibt bis zu `top_k` beschreibende Hundesicht-Texte zurück.
-    """
-    client = get_weaviate_client()
-    try:
-        coll = client.collections.get("Hundeperspektive")
-        response = coll.query.near_text(
-            query=symptom_input,
-            limit=top_k,
-            return_metadata=MetadataQuery(distance=True)
-        )
-    except Exception as e:
-        client.close()
-        raise RuntimeError(f"Hundewissen-Abfrage fehlgeschlagen: {e}")
-
-    client.close()
-    return [
-        obj.properties["beschreibung"]
-        for obj in response.objects
-    ]
+    return [obj.properties for obj in response.objects]
 
 
-def get_instinkt_rueckfrage(info: SymptomInfo) -> dict:
-    """
-    Leitet eine alltagssprachliche Rückfrage aus den Instinkt-Beschreibungen ab.
-    Ziel: Kein Fachbegriff, sondern natürliche Hypothese mit Einladung zur Bestätigung.
-    """
-    if not info.instinktvarianten:
-        return {
-            "question": "Kannst du mir mehr über das Problem erzählen?",
-            "instinkt": "unbekannt"
-        }
-
-    variant = choice(info.instinktvarianten)
-    beschreibung = variant.beschreibung.strip()
-
-    frage = (
-        f"Manche Hunde verhalten sich in solchen Situationen so: {beschreibung} "
-        f"Könnte das auch auf deinen Hund zutreffen?"
-    )
-
-    return {
-        "question": frage,
-        "instinkt": variant.instinkt
+def get_schnelldiagnose(symptom: str) -> str:
+    query = {
+        "class": "Symptom",
+        "properties": ["beschreibung"],
+        "nearText": {
+            "concepts": [symptom],
+            "certainty": 0.7
+        },
+        "limit": 1
     }
+    result = weaviate_query(query)
+    if result and "beschreibung" in result[0]:
+        return result[0]["beschreibung"]
+    return "(keine passende Beschreibung gefunden)"
+
+
+def get_instinktwissen(symptom: str) -> list[dict]:
+    query = {
+        "class": "Instinktvariante",
+        "properties": ["instinkt", "beschreibung"],
+        "nearText": {
+            "concepts": [symptom],
+            "certainty": 0.7
+        },
+        "limit": 4
+    }
+    return weaviate_query(query)
+
+
+def get_erste_hilfe(instinkt: str, symptom: str) -> str:
+    query = {
+        "class": "ErsteHilfe",
+        "properties": ["text"],
+        "nearText": {
+            "concepts": [instinkt, symptom],
+            "certainty": 0.65
+        },
+        "limit": 1
+    }
+    result = weaviate_query(query)
+    if result and "text" in result[0]:
+        return result[0]["text"]
+    return "(keine Erste-Hilfe-Maßnahme gefunden)"
