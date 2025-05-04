@@ -7,7 +7,6 @@ from src.agents.dog_agent import DogAgent
 from src.agents.coach_agent import CoachAgent
 from src.agents.companion_agent import CompanionAgent
 from src.models.agent_models import AgentMessage
-from src.services.retrieval import get_symptom_info
 from src.state.session_store import create_session, append_message
 
 
@@ -21,16 +20,18 @@ class FlowOrchestrator:
     def run_initial_flow(self, symptom: str) -> dict:
         session_id = create_session()
 
-        # Hund antwortet auf Symptom
-        dog_msg = self.dog.respond(symptom, self.client)
-        append_message(session_id, dog_msg)
+        # Hund antwortet (nun als Liste von Messages)
+        dog_messages = self.dog.respond(symptom, self.client)
+        for msg in dog_messages:
+            append_message(session_id, msg)
 
         return {
             "session_id": session_id,
-            "messages": [dog_msg]
+            "messages": dog_messages
         }
 
     def run_continued_flow(self, session_id: str, user_answer: str) -> dict:
+        # Nutzereingabe speichern
         append_message(session_id, AgentMessage(sender="user", text=user_answer))
 
         # Coach antwortet mit Rückfrage oder Diagnose
