@@ -15,7 +15,8 @@ class BaseAgent:
         system_prompt: str,
         prompt: str,
         client: OpenAI,
-        include_greeting: bool = True
+        include_greeting: bool = True,
+        include_question: bool = False
     ) -> List[AgentMessage]:
         """
         Gibt 1–3 AgentMessage-Objekte zurück:
@@ -38,7 +39,7 @@ class BaseAgent:
         main_text = response.choices[0].message.content.strip()
         messages.append(AgentMessage(sender=self.name, text=main_text))
 
-        if self.question_text:
+        if include_question and self.question_text:
             messages.append(AgentMessage(sender=self.name, text=self.question_text))
 
         return messages

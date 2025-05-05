@@ -7,7 +7,7 @@ from src.state.session_state import SessionState
 _store: dict[str, dict[str, Any]] = {}
 
 # Standardzustand für neue Sessions
-DEFAULT_STATE = SessionState.WAITING_FOR_SYMPTOM
+DEFAULT_STATE = SessionState.WAITING_FOR_DOG_QUESTION
 
 
 def create_session(session_id: str):
@@ -73,5 +73,40 @@ def set_state(session_id: str, new_state: SessionState):
     """
     Aktualisiert den FSM-Zustand der Session.
     """
+
     if session_id in _store:
         _store[session_id]["state"] = new_state.value
+
+
+def was_processed(session_id: str, state: SessionState) -> bool:
+    session = _store.get(session_id, {})
+    result = session.get("processed", {}).get(state.value, False)
+    print(f"[DEBUG] was_processed({session_id}, {state}) -> {result}")
+    return result
+
+def mark_processed(session_id: str, state: SessionState):
+    print(f"[DEBUG] mark_processed({session_id}, {state})")
+    if session_id not in _store:
+        return
+    if "processed" not in _store[session_id]:
+        _store[session_id]["processed"] = {}
+    _store[session_id]["processed"][state.value] = True
+    # Keine separate Persistierung nötig – _store ist ein globales, veränderbares Dict
+
+
+# ───── SessionStateStore-Klasse ─────
+class SessionStateStore:
+    """
+    Einfache Speicherklasse für den FSM-Zustand pro Session.
+    """
+    def get(self, session_id: str) -> SessionState:
+        raw = _store.get(session_id, {}).get("state", DEFAULT_STATE.value)
+        return SessionState(raw)
+
+    def advance(self, session_id: str):
+        current = self.get(session_id)
+        next_state = SessionState.next(current)
+        _store[session_id]["state"] = next_state.value
+
+    def end(self, session_id: str):
+        _store[session_id]["state"] = SessionState.ENDED.value

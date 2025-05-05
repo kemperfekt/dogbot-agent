@@ -95,3 +95,49 @@ class CoachAgent(BaseAgent):
             "Wenn keine passt, sage das offen.\n\n"
             "Gib in jedem Fall die passende Erste Hilfe aus."
         )
+
+    def respond_to_decline(self) -> AgentMessage:
+        return AgentMessage(
+            sender=self.name,
+            text="Kein Problem. Wenn du es dir anders überlegst, bin ich für dich da."
+        )
+    def ask_for_training(self) -> AgentMessage:
+        return AgentMessage(
+            sender=self.name,
+            text=self.question_text
+        )
+
+    def respond_to_training_decline(self) -> AgentMessage:
+        return AgentMessage(
+            sender=self.name,
+            text="Okay, dann vielleicht ein anderes Mal."
+        )
+    # Begrüßt den Menschen, leitet zur Zielbildfrage über
+    def get_intro_messages(self) -> list[AgentMessage]:
+        return [self.introduce()]
+
+    # Fragt den Menschen nach seinem Zielbild für das Hundeverhalten
+    def get_goal_messages(self) -> list[AgentMessage]:
+        return [AgentMessage(sender=self.name, text="Wie wünscht Du Dir, dass es in Zukunft läuft?")]
+
+    # Führt die Anamnese durch (z. B. Tagesablauf, Umgebung, Routinen)
+    def get_anamnesis_messages(self) -> list[AgentMessage]:
+        return [AgentMessage(sender=self.name, text="Erzähl mir ein bisschen über den Tagesablauf und euer Zuhause.")]
+
+    # Ruft die GPT-basierte Diagnose ab
+    def get_diagnosis_messages(self, session_id: str, user_input: str, client: OpenAI) -> list[AgentMessage]:
+        return self.respond(session_id=session_id, user_input=user_input, client=client)
+
+    # Fragt, ob Interesse an einem Trainingsplan besteht
+    def get_training_prompt_messages(self, user_input: str) -> list[AgentMessage]:
+        if self._is_positive(user_input):
+            return [self.ask_for_training()]
+        return [self.respond_to_decline()]
+
+    # Liefert den Trainingsplan als GPT-Antwort
+    def get_training_messages(self, session_id: str, user_input: str, client: OpenAI) -> list[AgentMessage]:
+        return self.give_training(session_id=session_id, user_input=user_input, client=client)
+
+    # Erkennt einfache Zustimmung des Menschen
+    def _is_positive(self, text: str) -> bool:
+        return text.strip().lower() in ["ja", "okay", "gern", "klar", "yes"]
