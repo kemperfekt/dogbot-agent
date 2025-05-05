@@ -1,0 +1,117 @@
+{
+    "info": {
+      "name": "DogBot Diagnose Test",
+      "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+      {
+        "name": "Diagnose Start - zieht an der Leine",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"symptom_input\": \"zieht an der Leine\"\n}"
+          },
+          "url": {
+            "raw": "http://localhost:8000/diagnose_start",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "diagnose_start"
+            ]
+          }
+        }
+      },
+      {
+        "name": "Diagnose Start - bellt Menschen an",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"symptom_input\": \"bellt Menschen an\"\n}"
+          },
+          "url": {
+            "raw": "http://localhost:8000/diagnose_start",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "diagnose_start"
+            ]
+          }
+        }
+      },
+      {
+        "name": "Diagnose Start - kommt nicht auf Rückruf",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"symptom_input\": \"kommt nicht auf Rückruf\"\n}"
+          },
+          "url": {
+            "raw": "http://localhost:8000/diagnose_start",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "diagnose_start"
+            ]
+          }
+        }
+      },
+      {
+        "name": "Diagnose Continue (Beispielantwort)",
+        "request": {
+          "method": "POST",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": {
+            "mode": "raw",
+            "raw": "{\n  \"session_id\": \"<SESSION_ID_HERE>\",\n  \"answer\": \"Ja\"\n}"
+          },
+          "url": {
+            "raw": "http://localhost:8000/diagnose_continue",
+            "protocol": "http",
+            "host": [
+              "localhost"
+            ],
+            "port": "8000",
+            "path": [
+              "diagnose_continue"
+            ]
+          }
+        }
+      }
+    ]
+  }
+  
