@@ -23,6 +23,10 @@ venv/
 #UI
 assets/
 
+# Legacy Code
+legacy/
+src/legacy/
+
 # Misc
 .DS_Store
 tech_strategy.md
