@@ -3,9 +3,9 @@ name: Python Tests
 
 on:
   push:
-    branches: ["main", "refactor/fsm-orchestrator"]
+    branches: ["refactor/fsm-orchestrator"]
   pull_request:
-    branches: ["main"]
+    branches: ["refactor/fsm-orchestrator"]
 
 jobs:
   test:
