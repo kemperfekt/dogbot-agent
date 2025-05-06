@@ -56,7 +56,8 @@ class FlowOrchestrator:
 
         elif state == SessionState.WAITING_FOR_DOG_TRANSITION:
             if self._is_positive(user_answer.strip()):
-                messages = [AgentMessage(sender=self.coach.name, text=self.coach.get_intro_text(), type="static")]
+                # FIX: Use the intro_text attribute instead of the non-existent get_intro_text() method
+                messages = [AgentMessage(sender=self.coach.name, text=self.coach.intro_text, type="static")]
                 self.state_store.set_state(session_id, SessionState.WAITING_FOR_COACH_GOAL)
             else:
                 messages = self.dog.get_restart_prompt()
@@ -132,4 +133,4 @@ class FlowOrchestrator:
 
     def _is_positive(self, answer: str) -> bool:
         positive_inputs = ["ja", "yes", "klar", "okay", "mach", "bitte", "gerne", "jup", "yep", "yo", "ok"]
-        return answer.strip().lower() in positive_inputs    
+        return answer.strip().lower() in positive_inputs

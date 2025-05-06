@@ -5,7 +5,8 @@ from typing import List
 
 class BaseAgent:
     def __init__(self, name: str):
-        self.name = name.lower()
+        # Store the original name without lowercase conversion
+        self.name = name
         self.greeting_text: str | None = None
         self.question_text: str | None = None
 
@@ -30,7 +31,7 @@ class BaseAgent:
             messages.append(AgentMessage(sender=self.name, text=self.greeting_text))
 
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
@@ -43,7 +44,7 @@ class BaseAgent:
             messages.append(AgentMessage(sender=self.name, text=self.question_text))
 
         for i, m in enumerate(messages):
-            if not m.sender or m.sender not in {"dog", "coach", "companion", "user", "system", "error", "bot"}:
+            if not m.sender or m.sender not in {"dog", "coach", "companion", "user", "system", "error", "bot", "Dog", "Coach", "Companion"}:
                 print(f"[Warn] Invalid sender in message {i}: {m}")
                 m.sender = self.name
 

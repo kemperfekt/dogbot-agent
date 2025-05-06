@@ -17,6 +17,7 @@ def ensure_dict_list(messages: list) -> list[dict]:
     result = []
     for m in messages:
         if isinstance(m, AgentMessage):
+            # Preserve the original case of sender name
             result.append(m.model_dump())
         elif isinstance(m, dict):
             result.append(m)

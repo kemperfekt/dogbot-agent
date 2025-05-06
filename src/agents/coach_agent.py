@@ -30,7 +30,7 @@ class CoachAgent(BaseAgent):
         prompt = self._build_prompt(symptom, instinktvarianten, fachwissen)
 
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": system_prompt_coach},
                 {"role": "user", "content": prompt},
