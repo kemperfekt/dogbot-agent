@@ -42,4 +42,9 @@ class BaseAgent:
         if include_question and self.question_text:
             messages.append(AgentMessage(sender=self.name, text=self.question_text))
 
+        for i, m in enumerate(messages):
+            if not m.sender or m.sender not in {"dog", "coach", "companion", "user", "system", "error", "bot"}:
+                print(f"[Warn] Invalid sender in message {i}: {m}")
+                m.sender = self.name
+
         return messages

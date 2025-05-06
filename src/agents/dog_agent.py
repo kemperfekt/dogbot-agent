@@ -13,13 +13,15 @@ class DogAgent(BaseAgent):
     def introduce(self) -> AgentMessage:
         return AgentMessage(
             sender=self.name,
-            text=self.greeting_text
+            text=self.greeting_text,
+            type="static"
         )
     
     def ask_about_symptom(self) -> AgentMessage:
         return AgentMessage(
             sender=self.name,
-            text=self.question_text
+            text=self.question_text,
+            type="static"
         )
     
     def build_prompt(self, symptom: str) -> str:
@@ -52,7 +54,7 @@ class DogAgent(BaseAgent):
 
     # Verarbeitet die Nutzerantwort auf das Symptom mit GPT (RAG)
     def get_response_messages(self, user_input: str, client: OpenAI) -> list[AgentMessage]:
-        # Gibt nur die GPT-basierte Antwort zurück – keine Wiederholung der Frage
+        # Holt die GPT-Antwort ohne Begrüßung/Frage
         messages = super().respond(
             system_prompt=system_prompt_dog,
             prompt=self.build_prompt(symptom=user_input),
@@ -60,23 +62,13 @@ class DogAgent(BaseAgent):
             include_greeting=False,
             include_question=False
         )
-        messages.append(AgentMessage(
-            sender=self.name,
-            text="\n\nMöchtest Du verstehen, warum ich mich so verhalte?"
-        ))
-        return messages
+
+        # Kombiniert GPT-Antwort und Übergabefrage in eine Nachricht
+        combined = messages[0].text + "\n\n---\n\nMöchtest Du verstehen, warum ich mich so verhalte? Dann gebe ich Dich jetzt an den Coach weiter."
+        return [AgentMessage(sender=self.name, text=combined, type="gpt")]
 
     # Fragt den Menschen, ob er ein weiteres Symptom beschreiben möchte
     def get_restart_prompt(self) -> list[AgentMessage]:
         return [
-            AgentMessage(sender=self.name, text="Möchtest Du mir noch ein weiteres Verhalten beschreiben?")
-        ]
-
-    # Übergabe an den Coach: Hund fragt, ob Mensch mehr über die Ursache erfahren möchte
-    def get_transition_prompt(self) -> list[AgentMessage]:
-        return [
-            AgentMessage(
-                sender=self.name,
-                text="Möchtest Du verstehen, warum ich mich so verhalte?"
-            )
+            AgentMessage(sender=self.name, content="Möchtest Du mir noch ein weiteres Verhalten beschreiben?", type="static")
         ]

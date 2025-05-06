@@ -14,7 +14,7 @@ venv/
 *.sqlite3
 *.log
 *.csv
-#*.json
+*.json
 
 # IDE
 .vscode/

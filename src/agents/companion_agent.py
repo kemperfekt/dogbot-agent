@@ -1,7 +1,7 @@
 from openai import OpenAI
 from src.agents.base_agent import BaseAgent
 from src.prompts.system_prompt_companion import system_prompt_companion
-from src.state.session_store import get_history
+from src.state.message_store import get_history
 from src.logic.context_analyzer import extract_breed_from_history
 from src.models.agent_models import AgentMessage
 
@@ -15,7 +15,8 @@ class CompanionAgent(BaseAgent):
     def introduce(self) -> AgentMessage:
         return AgentMessage(
             sender=self.name,
-            text=self.intro_text
+            text=self.intro_text,
+            type="static"
         )
 
     def build_prompt(self, session_id: str) -> str:
@@ -37,9 +38,19 @@ class CompanionAgent(BaseAgent):
 
     def respond(self, session_id: str, client: OpenAI) -> list[AgentMessage]:
         prompt = self.build_prompt(session_id)
-        return super().respond(
+        messages = super().respond(
             system_prompt=system_prompt_companion,
             prompt=prompt,
             client=client,
             include_greeting=False  # Begrüßung wird manuell über intro_text gesteuert
+        )
+        for m in messages:
+            m.sender = self.name
+        return messages
+
+    def request_feedback(self) -> AgentMessage:
+        return AgentMessage(
+            sender=self.name,
+            text="Zum Schluss interessiert mich noch Deine Meinung.\n\n---\n\nWie hilfreich war dieses Gespräch für Dich?",
+            type="static"
         )

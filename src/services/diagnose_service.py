@@ -47,7 +47,7 @@ def get_final_diagnosis(session_log: List[Dict[str, Any]], known_facts: Dict[str
 
     # OpenAI-Request
     response = openai.ChatCompletion.create(
-        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        model=os.getenv("OPENAI_MODEL", "gpt-3.5-turbo"),
         messages=messages,
         temperature=0.5,
     )

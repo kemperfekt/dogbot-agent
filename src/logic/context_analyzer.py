@@ -19,7 +19,7 @@ class ContextAnalyzer:
     Du hilfst dabei, die Situation eines Hundeverhaltens besser zu verstehen.
     Analysiere die folgende Nachricht und bewerte, ob die folgenden Aspekte bereits erwähnt oder erkennbar sind:
 
-    - Ort (z. B. Straße, Wohnung, Wald)
+    - Ort (z.B. Straße, Wohnung, Wald)
     - Beteiligte (andere Menschen oder Tiere)
     - Zeit_davor (was kurz vorher passiert ist)
     - Zeit_danach (was danach passiert ist)

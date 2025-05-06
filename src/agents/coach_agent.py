@@ -2,7 +2,7 @@ from openai import OpenAI
 from src.agents.base_agent import BaseAgent
 from src.prompts.system_prompt_coach import system_prompt_coach
 from src.models.agent_models import AgentMessage
-from src.state.session_store import get_history
+from src.state.message_store import get_history
 from src.services.retrieval import get_instinktwissen, get_erste_hilfe
 
 
@@ -18,7 +18,8 @@ class CoachAgent(BaseAgent):
     def introduce(self) -> AgentMessage:
         return AgentMessage(
             sender=self.name,
-            text=self.intro_text
+            text=self.intro_text,
+            type="static"
         )
 
     def respond(self, session_id: str, user_input: str, client: OpenAI) -> list[AgentMessage]:
@@ -36,7 +37,7 @@ class CoachAgent(BaseAgent):
             ],
         )
         answer = response.choices[0].message.content.strip()
-        return [AgentMessage(sender=self.name, text=answer)]
+        return [AgentMessage(sender=self.name, text=answer, type="gpt")]
 
     def give_training(self, session_id: str, user_input: str, client: OpenAI) -> list[AgentMessage]:
         history = get_history(session_id)
@@ -64,7 +65,8 @@ class CoachAgent(BaseAgent):
             ],
         )
         answer = response.choices[0].message.content.strip()
-        return [AgentMessage(sender=self.name, text=answer)]
+        combined = f"{answer}\n\n---\n\nMöchtest Du ein weiteres Verhalten besprechen?"
+        return [AgentMessage(sender=self.name, text=combined, type="gpt")]
 
     def _extract_last_user_symptom(self, history: list[AgentMessage]) -> str:
         for msg in reversed(history):
@@ -93,36 +95,38 @@ class CoachAgent(BaseAgent):
             f"Instinktvariante sexual: {sexual}\n\n"
             "Welche Variante passt am besten? Wenn zwei Varianten infrage kommen, nenne beide.\n"
             "Wenn keine passt, sage das offen.\n\n"
-            "Gib in jedem Fall die passende Erste Hilfe aus."
         )
 
     def respond_to_decline(self) -> AgentMessage:
         return AgentMessage(
             sender=self.name,
-            text="Kein Problem. Wenn du es dir anders überlegst, bin ich für dich da."
+            text="Kein Problem. Wenn du es dir anders überlegst, bin ich für dich da.",
+            type="static"
         )
     def ask_for_training(self) -> AgentMessage:
         return AgentMessage(
             sender=self.name,
-            text=self.question_text
+            text=self.question_text,
+            type="static"
         )
 
     def respond_to_training_decline(self) -> AgentMessage:
         return AgentMessage(
             sender=self.name,
-            text="Okay, dann vielleicht ein anderes Mal."
+            text="Okay, dann vielleicht ein anderes Mal.",
+            type="static"
         )
     # Begrüßt den Menschen, leitet zur Zielbildfrage über
     def get_intro_messages(self) -> list[AgentMessage]:
         return [self.introduce()]
 
     # Fragt den Menschen nach seinem Zielbild für das Hundeverhalten
-    def get_goal_messages(self) -> list[AgentMessage]:
-        return [AgentMessage(sender=self.name, text="Wie wünscht Du Dir, dass es in Zukunft läuft?")]
+    def get_goal_messages(self, user_input: str) -> list[AgentMessage]:
+        return [AgentMessage(sender=self.name, text="Bitte beschreibe mir, wie die Situation aussieht, wenn sich das Verhalten Deines Hundes ändert. Benutze dafür bitte ausschließlich positive Worte.", type="static")]
 
     # Führt die Anamnese durch (z. B. Tagesablauf, Umgebung, Routinen)
     def get_anamnesis_messages(self) -> list[AgentMessage]:
-        return [AgentMessage(sender=self.name, text="Erzähl mir ein bisschen über den Tagesablauf und euer Zuhause.")]
+        return [AgentMessage(sender=self.name, text="Vielen Dank. Und nun brauche ich noch ein paar Informationen zum Alltag Deines Hundes. Wie viele Stunden schläft er am Tag, wie oft frisst er und was macht er außerhalb seines Zuhauses?", type="static")]
 
     # Ruft die GPT-basierte Diagnose ab
     def get_diagnosis_messages(self, session_id: str, user_input: str, client: OpenAI) -> list[AgentMessage]:
@@ -141,3 +145,4 @@ class CoachAgent(BaseAgent):
     # Erkennt einfache Zustimmung des Menschen
     def _is_positive(self, text: str) -> bool:
         return text.strip().lower() in ["ja", "okay", "gern", "klar", "yes"]
+    
