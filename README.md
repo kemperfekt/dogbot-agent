@@ -54,12 +54,10 @@ A user describes a behavioral symptom (e.g., “Why is my dog barking at other d
 6. A **Relationship Companion** reflects on the bond between human and dog and encourages learning and mutual understanding
 
 ## Agents
-🐾 Hund (Erleben)
-🧠 Mentor (Wissen)
-🛠 Coach (Verhalten)
-💛 Beziehungsbegleiter (Bindung)
+🐾 Hund (Behavious)
+🛠 Coach (Knowledge & Education)
+💛 Companion (Relationship)
 
-This structured, multi-agent approach supports not just training — but transformation.
 
 ---
 
