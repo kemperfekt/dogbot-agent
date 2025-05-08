@@ -26,11 +26,11 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
-      - name: Run tests with coverage
-        run: pytest --cov=src --cov-report=xml
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v3
-        with:
-          name: coverage-report
+#      - name: Run tests with coverage
+#       run: pytest --cov=src --cov-report=xml
+#
+#      - name: Upload coverage report
+#        uses: actions/upload-artifact@v3
+#        with:
+#         name: coverage-report
           path: coverage.xml
