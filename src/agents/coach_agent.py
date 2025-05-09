@@ -1,104 +1,52 @@
-import os
-import json
-from typing import Any, Dict, List
-from openai import OpenAI
-from pydantic import BaseModel
+from typing import List
+from src.models.flow_models import AgentMessage
+from src.services.retrieval import ask_with_context
+from src.services.gpt_service import ask_gpt
+from src.agents.base_agent import BaseAgent
+from src.services.weaviate_service import get_client
 
-from src.prompts.system_prompt_coach import coach_prompt
-from src.services.retrieval import get_symptom_info, get_breed_info, get_instinkt_profile
-from src.services.diagnose_service import get_final_diagnosis, FinalDiagnosisResponse
 
-# -----------------------------
-# Pydantic-Modelle
-# -----------------------------
-class CoachQuestionResponse(BaseModel):
-    question: str
-
-class CoachDiagnosisResponse(BaseModel):
-    message: str
-    details: Dict[str, Any]
-    needs_background: bool = False
-
-CoachResponse = CoachQuestionResponse | CoachDiagnosisResponse
-
-# -----------------------------
-# OpenAI-Client
-# -----------------------------
-def init_openai_client() -> OpenAI:
-    key = os.getenv("OPENAI_APIKEY")
-    if not key:
-        raise RuntimeError("OpenAI APIKEY nicht gesetzt")
-    return OpenAI(api_key=key)
-
-# -----------------------------
-# Coach-Agent
-# -----------------------------
-def run_coach_agent(
-    history: List[Dict[str, Any]],
-    dog_explanation: str,
-    symptom_input: str,
-    user_breed: str = None
-) -> Dict[str, Any]:
-    client = init_openai_client()
-
-    # 1) Fakten aus Weaviate ziehen
-    symptom = get_symptom_info(symptom_input)
-    # → symptom.instinktvarianten ist Dict[str,str]
-    first_instinct: str = next(iter(symptom.instinktvarianten.keys()), None)  # nur der String-Name
-    if user_breed:
-        breed = get_breed_info(user_breed)
-        instinct_profile = get_instinkt_profile(breed.gruppen_code)
-    elif first_instinct:
-        instinct_profile = get_instinkt_profile(first_instinct)
-    else:
-        instinct_profile = None
-
-    # 2) Prompt-Kontext aufbauen
-    context = [
-        f"**Hund erklärt:** {dog_explanation}",
-        f"**Symptombeschreibung:** {symptom.beschreibung[:200]}…",
-        "**Instinktvarianten:**"
-    ]
-    for inst_name, text in symptom.instinktvarianten.items():
-        context.append(f"- {inst_name}: {text[:100]}…")
-    if instinct_profile:
-        context.append(f"**Instinktprofil ({instinct_profile.gruppe}):** {instinct_profile.merkmale[:200]}…")
-    if user_breed and breed:
-        context.append(f"**Rasse ({breed.rassename}):** {breed.ursprungsland}")
-
-    full_prompt = coach_prompt.replace("{{context}}", "\n".join(context))
-
-    # 3) LLM-Aufruf
-    messages = [
-        {"role": "system",  "content": full_prompt},
-        {"role": "assistant_dog", "content": dog_explanation},
-        *[m for m in history if m["role"].startswith("assistant_coach")]
-    ]
-    resp = client.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-        messages=messages
-    )
-    text = resp.choices[0].message.content.strip()
-
-    # 4) JSON parsen
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        raise RuntimeError(f"Coach-Agent: Ungültige JSON-Antwort: {text}")
-
-    # 5) Rückfragen- vs. Diagnose-Zweig
-    if "questions" in payload:
-        return CoachQuestionResponse(question=payload["questions"][0]).dict()
-    else:
-        final: FinalDiagnosisResponse = get_final_diagnosis(
-            session_log=history + [{"role": "assistant_dog", "content": dog_explanation}],
-            known_facts={
-                "symptom": symptom.dict(),
-                "instinktprofil": instinct_profile.dict() if instinct_profile else {}
-            }
+class CoachAgent(BaseAgent):
+    def __init__(self):
+        super().__init__(
+            name="Coach",
+            role="coach",
+            greeting_text="Hallo, ich bin dein Coach. Ich helfe dir, das Verhalten deines Hundes zu verstehen.",
         )
-        return CoachDiagnosisResponse(
-            message=final.message,
-            details=final.details,
-            needs_background=final.needs_background
-        ).dict()
+
+    def generate_rueckfragen(self, symptom_name: str, instinktvarianten: dict) -> List[AgentMessage]:
+        """
+        Wählt je Instinkt eine gezielte Rückfrage aus den vorhandenen Varianten (via RAG).
+        """
+        from weaviate.classes.query import MetadataQuery
+
+        client = get_client()
+        symptom_collection = client.collections.get("Symptom")
+        response = symptom_collection.query.near_text(
+            query=symptom_name,
+            limit=1,
+            return_metadata=MetadataQuery(distance=True)
+        )
+
+        symptom = response.objects[0] if response.objects else None
+        if not symptom:
+            return [AgentMessage(role=self.role, content="Ich konnte leider keine Informationen zum Symptom finden.")]
+
+        rueckfragen = []
+        for instinkt, varianten in instinktvarianten.items():
+            if not varianten:
+                continue
+
+            # Prompt für GPT mit Auswahloptionen zur Formulierung einer passenden Rückfrage
+            variantentext = "\n".join(f"- {v}" for v in varianten)
+            prompt = (
+                f"Ein Mensch beschreibt folgendes Symptom bei seinem Hund: '{symptom_name}'.\n"
+                f"Hier sind mögliche Rückfragen zum Instinkt '{instinkt}':\n{variantentext}\n\n"
+                f"Welche dieser Rückfragen ist am sinnvollsten, um das Verhalten besser zu verstehen? "
+                f"Bitte gib genau eine davon als Klartext zurück."
+            )
+
+            selected = ask_gpt(prompt)
+            rueckfragen.append(AgentMessage(role=self.role, content=selected))
+
+        return rueckfragen

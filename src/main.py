@@ -1,61 +1,75 @@
-# src/main.py
+# main.py
 
-import os
-import uuid
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from src.agents.flow_agent import run_full_flow
-
-# Legacy-Alias für Tests – die Handler nutzen jetzt run_diagnose_agent
-run_diagnose_agent = run_full_flow
+from pydantic import BaseModel
+from src.orchestrator.flow_orchestrator import handle_symptom
+from src.state.session_state import SessionStore
+from src.agents.dog_agent import DogAgent
 
 app = FastAPI()
 
+# CORS-Block für Frontend-Zugriff
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],  # später ggf. Frontend-Domain einschränken
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class DiagnoseStartRequest(BaseModel):
-    symptom_input: str
+# SessionStore als globaler Speicher
+session_store = SessionStore()
 
-class DiagnoseStartResponse(BaseModel):
+# Dummy-Fragen – später dynamisch ersetzen
+DUMMY_INSTINKTVARIANTEN = {
+    "jagd": ["Fixiert dein Hund etwas in der Ferne?", "Zieht er los, wenn er eine Spur wittert?"],
+    "rudel": ["Ist er besonders unruhig, wenn ihr getrennt seid?", "Läuft er gezielt zu bestimmten Menschen hin?"],
+    "territorial": ["Reagiert er an bestimmten Orten besonders stark?", "Wirkt er wie ein 'Wächter'?"],
+    "sexual": ["Ist er dabei angespannt gegenüber Hündinnen oder Rüden?", "Markiert er auffällig oft?"]
+}
+
+class IntroResponse(BaseModel):
     session_id: str
-    question: str | None = None
-    message: str | None = None
-    details: dict | None = None
+    messages: list
 
-@app.post("/diagnose_start", response_model=DiagnoseStartResponse)
-def diagnose_start(req: DiagnoseStartRequest):
-    sid = str(uuid.uuid4())
-    # Nutze Alias
-    result = run_diagnose_agent(sid, req.symptom_input)
-    return {"session_id": sid, **result}
-
-class DiagnoseRequest(BaseModel):
+class StartRequest(BaseModel):
     session_id: str
-    user_input: str
+    symptom: str
 
-class DiagnoseResponse(BaseModel):
-    question: str | None = None
-    message: str | None = None
-    details: dict | None = None
+class ContinueRequest(BaseModel):
+    session_id: str
+    answer: str
 
-@app.post("/diagnose_continue", response_model=DiagnoseResponse)
-def diagnose_continue(req: DiagnoseRequest):
-    try:
-        # Verwende Alias, nicht direkt run_full_flow
-        result = run_diagnose_agent(req.session_id, req.user_input)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
-    import uvicorn
-    uvicorn.run("src.main:app", host="0.0.0.0", port=port, reload=True)
+dog = DogAgent()
+
+@app.post("/flow_intro")
+async def flow_intro():
+    session = session_store.create_session()
+    messages = [{
+        "sender": dog.role,
+        "text": dog.greeting_text
+    }]
+    return {"session_id": session.session_id, "messages": messages}
+
+
+@app.post("/flow_start")
+async def flow_start(req: StartRequest):
+    session = session_store.get_or_create(req.session_id)
+    result = handle_symptom(req.symptom, DUMMY_INSTINKTVARIANTEN, session)
+    return {"session_id": session.session_id, "messages": [msg.model_dump() for msg in result], "done": False}
+
+
+@app.post("/flow_continue")
+async def flow_continue(req: ContinueRequest):
+    # MVP: einfach Antwort anhängen – später mit echter FSM-Weiterverarbeitung
+    session = session_store.get_or_create(req.session_id)
+    return {
+        "session_id": session.session_id,
+        "messages": [{
+            "role": "system",
+            "content": f"Danke für deine Antwort: '{req.answer}'. Mehr Logik folgt bald!"
+        }],
+        "done": True
+    }

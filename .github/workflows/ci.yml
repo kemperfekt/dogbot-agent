@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, refactor-clean-fsm-agents ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, refactor-clean-fsm-agents ]
 
 jobs:
   test:
@@ -15,10 +15,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Set PYTHONPATH for tests
+        run: echo "PYTHONPATH=${{ github.workspace }}" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: |
@@ -36,5 +39,5 @@ jobs:
 #      - name: Upload coverage report
 #        uses: actions/upload-artifact@v3
 #        with:
-#         name: coverage-report
-#         path: coverage.xml
+#          name: coverage-report
+#          path: coverage.xml

@@ -1,54 +1,29 @@
-# src/agents/dog_agent.py
+from typing import List
+from src.models.flow_models import AgentMessage
+from src.agents.base_agent import BaseAgent
 
-import os
-from typing import List, Dict, Any
-from openai import OpenAI
-from pydantic import BaseModel
 
-from src.prompts.prompt_hundliche_wahrnehmung import hundliche_wahrnehmung
+class DogAgent(BaseAgent):
+    def __init__(self):
+        super().__init__(
+            name="Hund",
+            role="dog",
+            greeting_text="Wuff! Ich bin dein Hund. Ich erzähle dir, wie sich die Situation für mich angefühlt hat.",
+        )
 
-class DogResponse(BaseModel):
-    """
-    Antwort des Hund-Agenten in Hundeperspektive.
-    Wird als {'text': str} serialisiert.
-    """
-    text: str
+    def react_to_symptom(self, symptom_description: str) -> List[AgentMessage]:
+        """
+        Reagiert instinktgeprägt und emotional auf das geschilderte Verhalten aus Hundesicht.
+        Diese Version verwendet GPT, perspektivisch ergänzt durch Inhalte aus der 'Hundeperspektive'-Collection (RAG).
+        """
+        from services.gpt_service import ask_gpt
 
-def init_openai_client() -> OpenAI:
-    """
-    Initialisiert den OpenAI-Client mit der Umgebungsvariable OPENAI_APIKEY.
-    Wirft einen Fehler, wenn der Key nicht gesetzt ist.
-    """
-    api_key = os.getenv("OPENAI_APIKEY")
-    if not api_key:
-        raise RuntimeError("OpenAI APIKEY nicht gesetzt")
-    return OpenAI(api_key=api_key)
+        prompt = (
+            "Stell dir vor, du bist ein Hund und erlebst folgende Situation:\n"
+            f"'{symptom_description}'\n\n"
+            "Wie fühlt sich das aus Hundesicht an? Antworte emotional, mit instinktgeprägter Wahrnehmung – "
+            "nicht analytisch. Du darfst auch auf Geräusche, Gerüche oder Körpersprache eingehen."
+        )
 
-def run_dog_agent(
-    history: List[Dict[str, Any]],
-    symptom_input: str
-) -> Dict[str, Any]:
-    """
-    Führt den Hund-Agenten aus:
-    - history: bisherige Conversation-History (role, content) – kann für Kontext genutzt werden
-    - symptom_input: Beschreibung des Verhaltens durch den Menschen
-
-    Gibt ein Dictionary {'text': ...} zurück, das die Erlebniserklärung des Hundes enthält.
-    """
-    client = init_openai_client()
-
-    # System-Prompt mit Hundeperspektive
-    messages = [
-        {"role": "system", "content": hundliche_wahrnehmung},
-        {"role": "user",   "content": symptom_input},
-    ]
-
-    # API-Call
-    response = client.chat.completions.create(
-        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-        messages=messages,
-    )
-
-    # Erster Choice-Text
-    text = response.choices[0].message.content.strip()
-    return DogResponse(text=text).dict()
+        antwort = ask_gpt(prompt)
+        return [AgentMessage(role=self.role, content=antwort)]
