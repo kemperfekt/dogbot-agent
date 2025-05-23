@@ -1,14 +1,15 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
-from src.agents.dog_agent import DogAgent
-from src.state.session_state import SessionState
 from src.models.flow_models import AgentMessage
+from src.flow.flow_orchestrator import handle_message, init_orchestrator
+from src.state.session_state import SessionStore
 
 router = APIRouter()
 
-# Globale Sitzung (MVP-Version)
-sessions: dict[str, SessionState] = {}
+# Globale Session-Store initialisieren
+session_store = SessionStore()
+init_orchestrator(session_store)
 
 
 class FlowIntroResponse(BaseModel):
@@ -33,49 +34,62 @@ class FlowResponse(BaseModel):
 
 
 @router.post("/flow_intro", response_model=FlowIntroResponse)
-def flow_intro():
-    session_id = "sess_" + str(len(sessions) + 1)
-    sessions[session_id] = SessionState()
-
-    # Begrüßung vom Hund – initiale Einführung
-    greeting = AgentMessage(
-        role="dog",
-        content="🐾 Hallo Mensch! Ich bin dein Hund. Erzähl mir einfach, was dich gerade beschäftigt."
-    )
-    return FlowIntroResponse(session_id=session_id, messages=[greeting])
+async def flow_intro():
+    """Startet eine neue Session und gibt Begrüßung zurück"""
+    # Session über SessionStore erstellen (nicht direkt)
+    session = session_store.create_session()
+    
+    # ✅ SAUBERE ARCHITEKTUR: Greeting über flow_orchestrator vom DogAgent
+    try:
+        messages = await handle_message(session.session_id, "")
+        return FlowIntroResponse(session_id=session.session_id, messages=messages)
+    except Exception as e:
+        print(f"❌ Fehler bei flow_intro: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/flow_start", response_model=FlowResponse)
-def flow_start(request: FlowStartRequest):
-    session_id = request.session_id or "sess_" + str(len(sessions) + 1)
-    state = sessions.setdefault(session_id, SessionState())
-
+async def flow_start(request: FlowStartRequest):
+    """
+    ✅ KORRIGIERT: Nutzt jetzt flow_orchestrator statt direkten DogAgent-Aufruf
+    """
+    session_id = request.session_id
+    if not session_id:
+        # Neue Session erstellen falls keine ID gegeben
+        session = session_store.create_session()
+        session_id = session.session_id
+    
     try:
-        agent = DogAgent()
-        messages = agent.react_to_symptom(request.symptom)
+        # ✅ RICHTIG: Über flow_orchestrator statt direktem DogAgent
+        messages = await handle_message(session_id, request.symptom)
         return FlowResponse(session_id=session_id, messages=messages)
     except Exception as e:
+        print(f"❌ Fehler in flow_start: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/flow_continue", response_model=FlowResponse)
-def flow_continue(request: FlowContinueRequest):
-    state = sessions.get(request.session_id)
-    if not state:
+async def flow_continue(request: FlowContinueRequest):
+    """
+    ✅ KORRIGIERT: Nutzt jetzt flow_orchestrator statt direkten DogAgent-Aufruf
+    """
+    # Session-Existenz prüfen
+    session = session_store.sessions.get(request.session_id)
+    if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
     print(f"📨 Eingegangene Antwort von Mensch: {request.answer}")
     print(f"📨 Session-ID: {request.session_id}")
 
     try:
-        agent = DogAgent()
-        messages = agent.continue_flow(request.answer)
+        # ✅ RICHTIG: Über flow_orchestrator statt direktem DogAgent
+        messages = await handle_message(request.session_id, request.answer)
 
-        print("✅ GPT hat folgende Nachrichten zurückgegeben:")
+        print("✅ Flow Orchestrator hat folgende Nachrichten zurückgegeben:")
         for m in messages:
             print(f"- {m.sender}: {m.text}")
 
         return FlowResponse(session_id=request.session_id, messages=messages, done=False)
     except Exception as e:
-        print("❌ Fehler beim Verarbeiten der Folgeantwort:", e)
+        print(f"❌ Fehler beim Verarbeiten der Folgeantwort: {e}")
         raise HTTPException(status_code=500, detail=str(e))

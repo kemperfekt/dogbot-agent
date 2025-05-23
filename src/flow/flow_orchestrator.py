@@ -5,21 +5,20 @@ from src.models.flow_models import AgentMessage, FlowStep
 from src.state.session_state import SessionState, SessionStore
 from src.agents.dog_agent import DogAgent
 from src.agents.companion_agent import CompanionAgent
-from src.services.weaviate_service import query_agent_service
-from src.services.gpt_service import validate_user_input
-from src.services.rag_service import RAGService
-from src.config.prompts import DOG_PERSPECTIVE_QUERY_TEMPLATE, INSTINCT_ANALYSIS_QUERY_TEMPLATE, EXERCISE_QUERY_TEMPLATE
 
 # Handler-Typ-Definition für bessere Lesbarkeit
 StepHandler = Callable[[SessionState, str], Awaitable[List[AgentMessage]]]
 
 class FlowOrchestrator:
-    """Orchestriert den Konversationsfluss in einer modularen Struktur"""
+    """Orchestriert den Konversationsfluss über Agents"""
     
     def __init__(self, session_store_instance):
         self.session_store = session_store_instance
         self.dog_agent = DogAgent()
         self.companion_agent = CompanionAgent()
+        
+        # Tracking für Feedback-Antworten
+        self.feedback_responses = {}
         
         # Mapping von Schritten zu Handlern für bessere Struktur
         self.step_handlers: Dict[FlowStep, StepHandler] = {
@@ -38,7 +37,7 @@ class FlowOrchestrator:
     
     async def handle_message(self, session_id: str, user_input: str) -> List[AgentMessage]:
         """
-        Verarbeitet eine Benutzernachricht.
+        Verarbeitet eine Benutzernachricht über die Agent-Architektur.
         
         Args:
             session_id: ID der Session
@@ -69,17 +68,13 @@ class FlowOrchestrator:
                 print(f"❌ Fehler im Handler für {state.current_step}: {e}")
                 import traceback
                 traceback.print_exc()
-                messages = [AgentMessage(
-                    sender=self.dog_agent.role,
-                    text="Entschuldige, es ist ein Problem aufgetreten. Lass uns neu starten."
-                )]
+                
+                # Support über CompanionAgent
+                messages = await self.companion_agent.provide_support("error occurred")
                 state.current_step = FlowStep.GREETING
         else:
-            # Fallback für unbekannte Schritte
-            messages = [AgentMessage(
-                sender=self.dog_agent.role,
-                text="Ich bin kurz verwirrt… lass uns neu starten."
-            )]
+            # Fallback über CompanionAgent
+            messages = await self.companion_agent.provide_support("confused")
             state.current_step = FlowStep.GREETING
 
         # Nachrichten zur Session hinzufügen
@@ -90,6 +85,10 @@ class FlowOrchestrator:
         """Behandelt einen Neustart-Request"""
         state.current_step = FlowStep.GREETING
         state.active_symptom = ""
+        # Reset feedback tracking
+        if state.session_id in self.feedback_responses:
+            del self.feedback_responses[state.session_id]
+        
         return [AgentMessage(
             sender=self.dog_agent.role,
             text="Okay, wir starten neu. Was möchtest du mir erzählen?"
@@ -104,250 +103,198 @@ class FlowOrchestrator:
         )]
     
     async def _handle_symptom_input(self, state: SessionState, user_input: str) -> List[AgentMessage]:
-        """Behandelt die Eingabe eines Symptoms - präzise Symptom-Suche"""
-        if not user_input or len(user_input) < 10:
+        """Behandelt die Eingabe eines Symptoms über DogAgent"""
+        
+        # NEUE ARCHITEKTUR: Content-Moderation über CompanionAgent
+        moderation_result = await self.companion_agent.moderate_content(user_input)
+        if not moderation_result["is_appropriate"]:
+            # DogAgent antwortet (nicht CompanionAgent) und bleibt im gleichen Zustand
             return [AgentMessage(
-                sender=self.dog_agent.role,
-                text="Kannst Du das Verhalten bitte etwas ausführlicher beschreiben?"
+                sender=self.dog_agent.role,  # DogAgent antwortet!
+                text="Hey, lass uns lieber über Hundeverhalten sprechen. Beschreib mir bitte ein Verhalten deines Hundes!"
             )]
+            # State bleibt WAIT_FOR_SYMPTOM - kein Zustandswechsel
         
-        # Verhalten speichern
-        state.active_symptom = user_input
-        
+        # NEUE ARCHITEKTUR: Symptom-Verarbeitung über DogAgent
         try:
-            # Präzise Suche in der Symptome-Collection
-            result = await query_agent_service.query(
-                query=DOG_PERSPECTIVE_QUERY_TEMPLATE.format(symptom=user_input),
-                collection_name="Symptome"
-            )
+            messages = await self.dog_agent.react_to_symptom(user_input)
             
-            # Antwort prüfen
-            if "data" in result and result["data"]:
-                dog_view = result["data"]
+            # NUR bei erfolgreichem Aufruf State ändern!
+            if messages and not any("Schwierigkeiten" in msg.text or "Problem" in msg.text for msg in messages):
+                state.active_symptom = user_input
                 
-                # Prüfen auf das spezielle Signal für "kein Match"
-                if "KEIN_MATCH_GEFUNDEN" in dog_view:
-                    # Zurück zum Anfang - kein Match gefunden
-                    return [AgentMessage(
-                        sender=self.dog_agent.role,
-                        text="Hmm, zu diesem Verhalten habe ich keine spezifischen Informationen. Magst du ein anderes Hundeverhalten beschreiben?"
-                    )]
+                # Prüfe, ob es ein "kein Match" oder "Neustart" Fall war
+                last_message_text = messages[-1].text.lower() if messages else ""
+                
+                if any(phrase in last_message_text for phrase in ["von vorne beginnen", "anderes verhalten", "versuch's mal anders"]):
+                    # Bleibt im WAIT_FOR_SYMPTOM Zustand
+                    state.current_step = FlowStep.WAIT_FOR_SYMPTOM
                 else:
-                    # Match gefunden - mit der Schnelldiagnose fortfahren
+                    # Erfolgreiche Antwort - zur Bestätigung
                     state.current_step = FlowStep.WAIT_FOR_CONFIRMATION
-                    return [AgentMessage(
-                        sender=self.dog_agent.role,
-                        text=f"{dog_view} Magst Du mehr erfahren, warum ich mich so verhalte?"
-                    )]
             else:
-                # Keine Daten in der Antwort
-                return [AgentMessage(
-                    sender=self.dog_agent.role,
-                    text="Ich konnte dieses Verhalten nicht einordnen. Magst du es anders beschreiben oder ein anderes Verhalten nennen?"
-                )]
-        
+                # Bei Fehlern: State NICHT ändern - bleibt WAIT_FOR_SYMPTOM
+                print(f"⚠️ DogAgent react_to_symptom hatte Probleme, State bleibt unverändert")
+            
+            return messages
+            
         except Exception as e:
             print(f"❌ Fehler bei der Symptomanalyse: {e}")
+            # State NICHT ändern - bleibt WAIT_FOR_SYMPTOM
             return [AgentMessage(
                 sender=self.dog_agent.role,
-                text="Entschuldige, ich hatte Schwierigkeiten, deine Anfrage zu verstehen. Magst du es noch einmal versuchen?"
+                text="Entschuldige, ich hatte Schwierigkeiten. Kannst du das Verhalten noch einmal beschreiben?"
             )]
         
     async def _handle_confirmation(self, state: SessionState, user_input: str) -> List[AgentMessage]:
-        """Behandelt die Bestätigung des Nutzers, mehr zu erfahren"""
-        if "ja" in user_input:
-            state.current_step = FlowStep.WAIT_FOR_CONTEXT
-            return [AgentMessage(
-                sender=self.dog_agent.role,
-                text="Gut, dann brauche ich ein bisschen mehr Informationen. Bitte beschreibe, wie es zu der Situation kam, wer dabei war und was sonst noch wichtig sein könnte."
-            )]
-        elif "nein" in user_input:
-            state.current_step = FlowStep.END_OR_RESTART
-            return [AgentMessage(
-                sender=self.dog_agent.role,
-                text="Okay, kein Problem. Wenn du es dir anders überlegst, sag einfach Bescheid."
-            )]
-        else:
-            return [AgentMessage(
-                sender=self.dog_agent.role,
-                text="Magst du mir einfach 'Ja' oder 'Nein' sagen?"
-            )]
+        """Behandelt die Bestätigung über DogAgent"""
+        try:
+            context = {
+                "flow_step": "wait_for_confirmation",
+                "symptom": state.active_symptom
+            }
+            messages = await self.dog_agent.continue_flow(user_input, context)
+            
+            # Nächsten Schritt basierend auf Antwort setzen
+            if "ja" in user_input.lower():
+                state.current_step = FlowStep.WAIT_FOR_CONTEXT
+            elif "nein" in user_input.lower():
+                state.current_step = FlowStep.END_OR_RESTART
+            # Sonst bleibt im aktuellen Schritt für Wiederholung
+            
+            return messages
+            
+        except Exception as e:
+            print(f"❌ Fehler bei Bestätigung: {e}")
+            return await self.companion_agent.provide_support("error in confirmation")
     
     async def _handle_context_input(self, state: SessionState, user_input: str) -> List[AgentMessage]:
-        """Behandelt die Kontexteingabe - Fokus auf Instinktanalyse"""
-        if len(user_input) < 5:
-            return [AgentMessage(
-                sender=self.dog_agent.role,
-                text="Ich brauch noch ein bisschen mehr Info… Wo war das genau, was war los?"
-            )]
-        
-        # Alle Eingaben des Benutzers zusammenfassen
-        symptom = state.active_symptom
-        context = user_input
-        combined_input = f"Verhalten: {symptom}\nZusätzlicher Kontext: {context}"
-        
+        """Behandelt die Kontexteingabe über DogAgent"""
         try:
-            # Direkter Prompt für Instinktanalyse
-            result = await query_agent_service.query(
-                query=INSTINCT_ANALYSIS_QUERY_TEMPLATE.format(
-                    symptom=state.active_symptom, 
-                    context=user_input
-                ),
-                collection_name="Instinkte"  # Gezielt in Instinkte suchen
-            )
+            context = {
+                "flow_step": "wait_for_context",
+                "symptom": state.active_symptom
+            }
+            messages = await self.dog_agent.continue_flow(user_input, context)
             
-            diagnosis = "Ich erkenne verschiedene innere Impulse in meinem Verhalten."
-            if "data" in result and result["data"]:
-                diagnosis = result["data"]
-                
-            # Zum nächsten Schritt mit der Übungsfrage gehen
+            # Nach erfolgreicher Diagnose zur Übungsfrage
             state.current_step = FlowStep.ASK_FOR_EXERCISE
+            return messages
             
-            return [
-                AgentMessage(
-                    sender=self.dog_agent.role,
-                    text=f"Danke. Wenn ich das mit meinem Instinkt vergleiche, sieht es so aus: {diagnosis}"
-                ),
-                AgentMessage(
-                    sender=self.dog_agent.role,
-                    text="Möchtest du eine Lernaufgabe, die dir in dieser Situation helfen kann?"
-                )
-            ]
         except Exception as e:
             print(f"❌ Fehler bei der Kontextverarbeitung: {e}")
-            state.current_step = FlowStep.ASK_FOR_EXERCISE
-            return [
-                AgentMessage(
-                    sender=self.dog_agent.role,
-                    text="Danke. Ich verstehe jetzt besser, warum ich mich so verhalte."
-                ),
-                AgentMessage(
-                    sender=self.dog_agent.role,
-                    text="Möchtest du eine Lernaufgabe, die dir in dieser Situation helfen kann?"
-                )
-            ]    
+            return await self.companion_agent.provide_support("error in context processing")
+    
     async def _handle_exercise_request(self, state: SessionState, user_input: str) -> List[AgentMessage]:
-        """Behandelt die Anfrage nach einer Übung - direkte Suche in Erziehung"""
-        if "ja" in user_input:
-            try:
-                # Direkte Übungssuche in Erziehung-Collection
-                result = await query_agent_service.query(
-                    query=EXERCISE_QUERY_TEMPLATE.format(symptom=state.active_symptom),
-                    collection_name="Erziehung"  # Gezielt in Erziehung suchen
-                )
+        """Behandelt die Anfrage nach einer Übung über DogAgent"""
+        try:
+            context = {
+                "flow_step": "ask_for_exercise",
+                "symptom": state.active_symptom
+            }
+            messages = await self.dog_agent.continue_flow(user_input, context)
+            
+            # Nächsten Schritt basierend auf Antwort setzen
+            if "ja" in user_input.lower():
+                state.current_step = FlowStep.END_OR_RESTART
+            elif "nein" in user_input.lower():
+                # Direkt zum Feedback springen
+                state.current_step = FlowStep.FEEDBACK_Q1
+                self.feedback_responses[state.session_id] = []
                 
-                exercise = "Eine hilfreiche Übung wäre, mit deinem Hund Impulskontrolle zu trainieren, indem du klare Grenzen setzt und alternatives Verhalten belohnst."
-                if "data" in result and result["data"]:
-                    exercise = result["data"]
-                    
-                state.current_step = FlowStep.END_OR_RESTART
-                return [
-                    AgentMessage(
-                        sender=self.dog_agent.role,
-                        text=exercise
-                    ),
-                    AgentMessage(
-                        sender=self.dog_agent.role,
-                        text="Möchtest du ein weiteres Hundeverhalten verstehen?"
-                    )
-                ]
-            except Exception as e:
-                print(f"❌ Fehler beim Abrufen der Übung: {e}")
-                # Fallback im Fehlerfall
-                state.current_step = FlowStep.END_OR_RESTART
-                return [
-                    AgentMessage(
-                        sender=self.dog_agent.role,
-                        text="Eine hilfreiche Übung wäre, deinem Hund alternative Verhaltensweisen beizubringen und diese konsequent zu belohnen."
-                    ),
-                    AgentMessage(
-                        sender=self.dog_agent.role,
-                        text="Möchtest du ein weiteres Hundeverhalten verstehen?"
-                    )
-                ]
-        elif "nein" in user_input:
-            # Direkt zum Feedback springen
-            state.current_step = FlowStep.FEEDBACK_Q1
-            state.feedback = []
-            return [AgentMessage(
-                sender="companion", 
-                text=self.companion_agent.feedback_questions[0]
-            )]
-        else:
-            return [AgentMessage(
-                sender=self.dog_agent.role,
-                text="Bitte antworte mit 'Ja' oder 'Nein' - möchtest du eine Lernaufgabe?"
-            )]    
+                # Feedback über CompanionAgent starten
+                feedback_messages = await self.companion_agent.handle_feedback_step(1)
+                return messages + feedback_messages
+            
+            return messages
+            
+        except Exception as e:
+            print(f"❌ Fehler beim Abrufen der Übung: {e}")
+            return await self.companion_agent.provide_support("error in exercise generation")
+    
     async def _handle_end_or_restart(self, state: SessionState, user_input: str) -> List[AgentMessage]:
-        """Behandelt das Ende oder einen Neustart"""
-        if "ja" in user_input:
-            state.current_step = FlowStep.WAIT_FOR_SYMPTOM
-            return [AgentMessage(
-                sender=self.dog_agent.role,
-                text="Super! Beschreibe mir bitte ein anderes Verhalten."
-            )]
-        elif "nein" in user_input:
-            state.current_step = FlowStep.FEEDBACK_Q1
-            state.feedback = []
-            return [AgentMessage(
-                sender="companion", 
-                text=self.companion_agent.feedback_questions[0]
-            )]
-        else:
-            return [AgentMessage(
-                sender=self.dog_agent.role,
-                text="Sag einfach 'Ja' für ein neues Verhalten oder 'Nein' zum Beenden und Feedback geben."
-            )]
+        """Behandelt das Ende oder einen Neustart über DogAgent"""
+        try:
+            context = {
+                "flow_step": "end_or_restart",
+                "symptom": state.active_symptom
+            }
+            messages = await self.dog_agent.continue_flow(user_input, context)
+            
+            if "ja" in user_input.lower():
+                state.current_step = FlowStep.WAIT_FOR_SYMPTOM
+                state.active_symptom = ""  # Reset für neues Symptom
+            elif "nein" in user_input.lower():
+                # Zum Feedback
+                state.current_step = FlowStep.FEEDBACK_Q1
+                self.feedback_responses[state.session_id] = []
+                
+                # Feedback über CompanionAgent starten
+                feedback_messages = await self.companion_agent.handle_feedback_step(1)
+                return messages + feedback_messages
+            
+            return messages
+            
+        except Exception as e:
+            print(f"❌ Fehler bei Ende/Restart: {e}")
+            return await self.companion_agent.provide_support("error in end/restart")
+    
+    # ===============================================
+    # FEEDBACK-HANDLER ÜBER COMPANIONAGENT
+    # ===============================================
     
     async def _handle_feedback_q1(self, state: SessionState, user_input: str) -> List[AgentMessage]:
-        """Behandelt die erste Feedback-Frage"""
-        state.feedback.append(user_input)
+        """Behandelt die erste Feedback-Frage über CompanionAgent"""
+        # Antwort speichern
+        if state.session_id not in self.feedback_responses:
+            self.feedback_responses[state.session_id] = []
+        self.feedback_responses[state.session_id].append(user_input)
+        
         state.current_step = FlowStep.FEEDBACK_Q2
-        return [AgentMessage(
-            sender="companion", 
-            text=self.companion_agent.feedback_questions[1]
-        )]
+        return await self.companion_agent.handle_feedback_step(2)
     
     async def _handle_feedback_q2(self, state: SessionState, user_input: str) -> List[AgentMessage]:
-        """Behandelt die zweite Feedback-Frage"""
-        state.feedback.append(user_input)
+        """Behandelt die zweite Feedback-Frage über CompanionAgent"""
+        self.feedback_responses[state.session_id].append(user_input)
         state.current_step = FlowStep.FEEDBACK_Q3
-        return [AgentMessage(
-            sender="companion", 
-            text=self.companion_agent.feedback_questions[2]
-        )]
+        return await self.companion_agent.handle_feedback_step(3)
     
     async def _handle_feedback_q3(self, state: SessionState, user_input: str) -> List[AgentMessage]:
-        """Behandelt die dritte Feedback-Frage"""
-        state.feedback.append(user_input)
+        """Behandelt die dritte Feedback-Frage über CompanionAgent"""
+        self.feedback_responses[state.session_id].append(user_input)
         state.current_step = FlowStep.FEEDBACK_Q4
-        return [AgentMessage(
-            sender="companion", 
-            text=self.companion_agent.feedback_questions[3]
-        )]
+        return await self.companion_agent.handle_feedback_step(4)
     
     async def _handle_feedback_q4(self, state: SessionState, user_input: str) -> List[AgentMessage]:
-        """Behandelt die vierte Feedback-Frage"""
-        state.feedback.append(user_input)
+        """Behandelt die vierte Feedback-Frage über CompanionAgent"""
+        self.feedback_responses[state.session_id].append(user_input)
         state.current_step = FlowStep.FEEDBACK_Q5
-        return [AgentMessage(
-            sender="companion", 
-            text=self.companion_agent.feedback_questions[4]
-        )]
+        return await self.companion_agent.handle_feedback_step(5)
     
     async def _handle_feedback_q5(self, state: SessionState, user_input: str) -> List[AgentMessage]:
-        """Behandelt die fünfte Feedback-Frage und speichert das Feedback"""
-        state.feedback.append(user_input)
-        try:
-            await self.companion_agent.save_feedback(state.session_id, state.feedback, state.messages)
-        except Exception as e:
-            print(f"⚠️ Fehler beim Speichern des Feedbacks: {e} — Feedback wird nicht gespeichert.")
+        """Behandelt die fünfte Feedback-Frage und beendet über CompanionAgent"""
+        self.feedback_responses[state.session_id].append(user_input)
         
-        state.current_step = FlowStep.GREETING
-        return [AgentMessage(
-            sender="companion", 
-            text="Danke für Dein Feedback! 🐾"
-        )]
+        # Feedback speichern über CompanionAgent
+        try:
+            messages = await self.companion_agent.finalize_feedback(
+                state.session_id, 
+                self.feedback_responses[state.session_id], 
+                state.messages
+            )
+            
+            # Cleanup
+            del self.feedback_responses[state.session_id]
+            state.current_step = FlowStep.GREETING
+            
+            return messages
+            
+        except Exception as e:
+            print(f"❌ Fehler beim Finalisieren des Feedbacks: {e}")
+            return [AgentMessage(
+                sender=self.companion_agent.role,
+                text="Danke für Dein Feedback! 🐾"
+            )]
 
 
 # Wird von main.py aufgerufen, um den Orchestrator zu initialisieren

@@ -2,7 +2,11 @@
 import json
 from typing import Dict, Any, Optional, List
 from src.services.weaviate_service import query_agent_service
-from src.config.prompts import COMBINED_INSTINCT_QUERY_TEMPLATE
+from src.config.prompts import (
+    INSTINCT_SEARCH_PROMPT, 
+    format_prompt,
+    get_error_response
+)
 from src.services.gpt_service import ask_gpt
 from src.core.error_handling import with_error_handling, RAGServiceError, GPTServiceError
 
@@ -31,6 +35,21 @@ class RAGService:
     """Verbesserte RAG-Service-Klasse für effiziente Weaviate-Abfragen"""
     
     @staticmethod
+    async def generate_diagnosis_intro() -> str:
+        """
+        Generiert eine dynamische Einleitung für die Diagnose.
+        """
+        try:
+            from src.config.prompts import DIAGNOSIS_INTRO_PROMPT, format_prompt
+            from src.services.gpt_service import ask_gpt
+            
+            intro_prompt = format_prompt(DIAGNOSIS_INTRO_PROMPT)
+            return await ask_gpt(intro_prompt)
+        except Exception as e:
+            print(f"❌ Fehler bei der Intro-Generierung: {e}")
+            return "Lass mich erklären, was in mir vorgeht:"
+
+    @staticmethod
     @with_error_handling(RAGServiceError, get_fallback_analysis())
     async def get_comprehensive_analysis(symptom: str, context: str = "") -> Dict[str, Any]:
         """
@@ -45,22 +64,12 @@ class RAGService:
             print("✅ Lade Analyse aus Cache")
             return _analysis_cache[cache_key]
             
-        # Eine präzisere Abfrage für bessere Ergebnisse
-        query = f"""
-        Analysiere das folgende Hundeverhalten: '{symptom}'
-        
-        Identifiziere den wahrscheinlichsten Instinkt (Jagd, Rudel, Territorial, Sexual) 
-        und gib eine Beschreibung aus Hundesicht zu jedem der vier Instinkte im Zusammenhang mit diesem Verhalten.
-        
-        Zusätzlicher Kontext: {context}
-        
-        Liefere das Ergebnis strukturiert mit folgenden Feldern:
-        - primary_instinct: Der dominanteste Instinkt 
-        - primary_description: Beschreibung, warum dieser Instinkt primär ist
-        - all_instincts: Kurzbeschreibungen für jeden der vier Instinkte
-        - exercise: Ein Übungsvorschlag für die Hundehalter
-        - confidence: Ein Wert zwischen 0 und 1, der angibt, wie sicher die Analyse ist
-        """
+        # Verwende den neuen strukturierten Prompt
+        query = format_prompt(
+            INSTINCT_SEARCH_PROMPT, 
+            symptom=symptom, 
+            context=context
+        )
         
         # Instinktveranlagung-Collection für beste Ergebnisse
         result = await query_agent_service.query(
@@ -96,32 +105,22 @@ class RAGService:
                             primary_instinct = line.split(":", 1)[1].strip()
                         elif line.startswith("primary_description:") or line.startswith("- primary_description:"):
                             primary_description = line.split(":", 1)[1].strip()
-                        elif line.startswith("exercise:") or line.startswith("- exercise:"):
-                            exercise = line.split(":", 1)[1].strip()
                         elif line.startswith("confidence:") or line.startswith("- confidence:"):
                             try:
                                 confidence = float(line.split(":", 1)[1].strip())
                             except:
                                 pass
-                        elif "jagd" in line.lower():
-                            all_instincts["jagd"] = line.split(":", 1)[1].strip() if ":" in line else line
-                        elif "rudel" in line.lower():
-                            all_instincts["rudel"] = line.split(":", 1)[1].strip() if ":" in line else line
-                        elif "territorial" in line.lower():
-                            all_instincts["territorial"] = line.split(":", 1)[1].strip() if ":" in line else line
-                        elif "sexual" in line.lower():
-                            all_instincts["sexual"] = line.split(":", 1)[1].strip() if ":" in line else line
                     
                     parsed_result = {
                         "primary_instinct": primary_instinct or "unbekannter Instinkt",
                         "primary_description": primary_description or "Keine Beschreibung verfügbar",
-                        "all_instincts": all_instincts or {
+                        "all_instincts": {
                             "jagd": "Der Jagdinstinkt lässt mich Dinge verfolgen und fangen wollen.",
                             "rudel": "Der Rudelinstinkt regelt mein soziales Verhalten in der Gruppe.",
                             "territorial": "Der territoriale Instinkt lässt mich mein Gebiet und meine Ressourcen schützen.",
                             "sexual": "Der Sexualinstinkt steuert mein Fortpflanzungsverhalten."
                         },
-                        "exercise": exercise or "Übe mit deinem Hund Impulskontrolle durch kurze, regelmäßige Trainingseinheiten.",
+                        "exercise": "Übe mit deinem Hund Impulskontrolle durch kurze, regelmäßige Trainingseinheiten.",
                         "confidence": confidence,
                         "success": True
                     }
@@ -166,67 +165,96 @@ class RAGService:
             print("✅ Lade Hundeperspektive aus Cache")
             return _dog_perspective_cache[cache_key]
         
-        # Varianten für die verschiedenen Instinkte vorbereiten
-        varianten = analysis.get("all_instincts", {})
-        
-        # Wenn die Varianten leer sind, Fallback verwenden
-        if not varianten:
-            varianten = {
-                "jagd": "Ich will etwas fangen oder verfolgen",
-                "rudel": "Ich will meinen Platz in der Gruppe finden",
-                "territorial": "Ich will meinen Bereich schützen",
-                "sexual": "Ich folge meinem Fortpflanzungstrieb"
-            }
-        
-        # Prompt für die Hundeperspektive
-        prompt = f"""
-        Ich bin ein Hund und habe dieses Verhalten gezeigt:
-        '{symptom}'
-        
-        Der wahrscheinlichste Instinkt ist: {analysis.get('primary_instinct', 'unbekannt')}
-        Mit dieser Beschreibung: {analysis.get('primary_description', '')}
-        
-        Die möglichen Instinkte sind:
-        Jagd: {varianten.get('jagd', '')}
-        Rudel: {varianten.get('rudel', '')}
-        Territorial: {varianten.get('territorial', '')}
-        Sexual: {varianten.get('sexual', '')}
-        
-        Du bist ich – ein Hund. Erkläre dem Menschen, wie du dieses Verhalten aus deiner Sicht erlebst.
-        Vermeide Fachbegriffe, bleib bei deinem Gefühl. Nenne keine Instinktnamen. Sprich nicht über Menschen oder Training.
-        """
-        
-        # Direkter Versuch, die Perspektive aus der Instinkte-Collection zu holen
         try:
+            # NEUE LOGIK: Nutze die verbesserten Prompts aus prompts.py
+            from src.config.prompts import SYMPTOM_SEARCH_PROMPT, DOG_PERSPECTIVE_PROMPT, format_prompt
+            
+            # 1. Suche Schnelldiagnose in Symptome-Collection
             result = await query_agent_service.query(
-                query=f"""
-                Als Hund beschreibe ich, wie ich das folgende Verhalten aus meiner Sicht erlebe: '{symptom}'
+                query=format_prompt(SYMPTOM_SEARCH_PROMPT, symptom=symptom),
+                collection_name="Symptome"
+            )
+            
+            if "data" in result and result["data"] and result["data"] != "NO_MATCH":
+                # 2. Wandle Schnelldiagnose in Hundeperspektive um
+                schnelldiagnose = result["data"]
+                dog_perspective_prompt = format_prompt(DOG_PERSPECTIVE_PROMPT, match=schnelldiagnose)
                 
-                Der wahrscheinlichste Instinkt dahinter ist {primary_instinct}.
+                # 3. GPT formatiert in Hundeperspektive
+                from src.services.gpt_service import ask_gpt
+                dog_perspective = await ask_gpt(dog_perspective_prompt)
                 
-                Antworte als Hund in der ersten Person (Ich-Form). 
-                Sei authentisch und emotional aus Hundesicht.
-                Vermeide Fachbegriffe und sprich nicht über Menschen oder Training.
-                """,
-                collection_name="Instinkte"  # Primär in der Instinkte-Collection suchen
+                # Ergebnis cachen
+                _dog_perspective_cache[cache_key] = dog_perspective
+                return dog_perspective
+            else:
+                # Kein Match gefunden
+                from src.config.prompts import get_error_response
+                no_match_response = get_error_response("no_match")
+                _dog_perspective_cache[cache_key] = no_match_response
+                return no_match_response
+                
+        except Exception as e:
+            print(f"⚠️ Fehler bei der Hundeperspektive: {e}")
+        
+        # Fallback
+        fallback_response = "Dazu fällt mir nichts ein. Versuch's mal anders?"
+        _dog_perspective_cache[cache_key] = fallback_response
+        return fallback_response
+    
+    @staticmethod
+    async def generate_exercise_recommendation(symptom: str, analysis: Dict[str, Any]) -> str:
+        """
+        Generiert eine Lernaufgabe basierend auf Weaviate-Daten und formatiert sie in Hundeperspektive.
+        """
+        try:
+            # NEUE LOGIK: Nutze die verbesserten Prompts aus prompts.py
+            from src.config.prompts import EXERCISE_SEARCH_PROMPT, EXERCISE_PROMPT, format_prompt
+            
+            # 1. Suche Übung in Erziehung-Collection
+            result = await query_agent_service.query(
+                query=format_prompt(EXERCISE_SEARCH_PROMPT, symptom=symptom),
+                collection_name="Erziehung"
             )
             
             if "data" in result and result["data"]:
-                # Ergebnis cachen
-                _dog_perspective_cache[cache_key] = result["data"]
-                return result["data"]
+                # 2. Formatiere Übung in Hundeperspektive
+                raw_exercise = result["data"]
+                exercise_prompt = format_prompt(EXERCISE_PROMPT, match=raw_exercise)
+                
+                # 3. GPT formatiert aus Hundeperspektive  
+                from src.services.gpt_service import ask_gpt
+                formatted_exercise = await ask_gpt(exercise_prompt)
+                return formatted_exercise
+            else:
+                # Fallback aus der Analyse verwenden
+                exercise_from_analysis = analysis.get("exercise", "")
+                if exercise_from_analysis and exercise_from_analysis != "Keine Übung verfügbar":
+                    # Auch das durch den Hundeperspektive-Prompt schicken
+                    exercise_prompt = format_prompt(EXERCISE_PROMPT, match=exercise_from_analysis)
+                    formatted_exercise = await ask_gpt(exercise_prompt)
+                    return formatted_exercise
+                
         except Exception as e:
-            print(f"⚠️ Fehler bei der Instinkte-Abfrage: {e}")
+            print(f"⚠️ Fehler bei der Übungsgenerierung: {e}")
         
-        # GPT für die Textgenerierung nutzen als Fallback
-        dog_view = await ask_gpt(prompt)
-        
-        # Ergebnis cachen
-        _dog_perspective_cache[cache_key] = dog_view
-        return dog_view
+        # Letzter Fallback
+        return "Geh mit mir an einen ruhigen Ort und lass uns gemeinsam entspannen."
     
     @staticmethod
-    async def batch_query(questions: List[Dict[str, str]], collection_name: Optional[str] = None) -> Dict[str, Any]:
+    async def generate_diagnosis_intro() -> str:
+        """
+        Generiert eine dynamische Einleitung für die Diagnose.
+        """
+        try:
+            from src.config.prompts import DIAGNOSIS_INTRO_PROMPT, format_prompt
+            from src.services.gpt_service import ask_gpt
+            
+            intro_prompt = format_prompt(DIAGNOSIS_INTRO_PROMPT)
+            return await ask_gpt(intro_prompt)
+        except Exception as e:
+            print(f"❌ Fehler bei der Intro-Generierung: {e}")
+            return "Lass mich erklären, was in mir vorgeht:"
         """
         Führt mehrere Abfragen in einem Batch aus, um die Anzahl der API-Aufrufe zu reduzieren.
         

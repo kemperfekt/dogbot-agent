@@ -23,6 +23,157 @@ class CompanionAgent:
         
         # Aufbewahrungsdauer in Tagen (z.B. 90 Tage = 3 Monate)
         self.retention_days = 90
+    
+    # ===============================================
+    # NEUE METHODEN FÜR FLOW_ORCHESTRATOR
+    # ===============================================
+    
+    async def handle_feedback_step(self, step_number: int, user_input: str = None) -> List[AgentMessage]:
+        """
+        Behandelt einen Feedback-Schritt. 
+        Wird vom flow_orchestrator aufgerufen.
+        
+        Args:
+            step_number: Welcher Feedback-Schritt (1-5)
+            user_input: Antwort des Users (None für erste Frage)
+            
+        Returns:
+            Liste von AgentMessages
+        """
+        try:
+            if step_number == 1:
+                # Erste Feedback-Frage
+                return [AgentMessage(
+                    sender=self.role,
+                    text="Ich würde mich freuen, wenn du mir noch ein kurzes Feedback gibst."
+                ), AgentMessage(
+                    sender=self.role,
+                    text=self.feedback_questions[0]
+                )]
+            
+            elif 2 <= step_number <= 5:
+                # Folgefragen (2-5)
+                question_index = step_number - 1
+                if question_index < len(self.feedback_questions):
+                    return [AgentMessage(
+                        sender=self.role,
+                        text=self.feedback_questions[question_index]
+                    )]
+                else:
+                    # Ende des Feedbacks
+                    return [AgentMessage(
+                        sender=self.role,
+                        text="Danke für Dein Feedback! 🐾"
+                    )]
+            else:
+                # Unbekannter Step
+                return [AgentMessage(
+                    sender=self.role,
+                    text="Danke für Dein Feedback! 🐾"
+                )]
+                
+        except Exception as e:
+            print(f"❌ Fehler in handle_feedback_step: {e}")
+            return [AgentMessage(
+                sender=self.role,
+                text="Danke für Dein Feedback! 🐾"
+            )]
+    
+    async def finalize_feedback(self, session_id: str, feedback_responses: List[str], messages: List[AgentMessage]) -> List[AgentMessage]:
+        """
+        Speichert das finale Feedback und beendet die Session.
+        Wird vom flow_orchestrator nach der letzten Feedback-Antwort aufgerufen.
+        """
+        try:
+            await self.save_feedback(session_id, feedback_responses, messages)
+            return [AgentMessage(
+                sender=self.role,
+                text="Danke für Dein Feedback! 🐾"
+            )]
+        except Exception as e:
+            print(f"⚠️ Fehler beim Speichern des Feedbacks: {e}")
+            return [AgentMessage(
+                sender=self.role,
+                text="Danke für Dein Feedback! 🐾"
+            )]
+    
+    async def moderate_content(self, content: str) -> Dict[str, Any]:
+        """
+        Moderiert Benutzerinhalte auf Angemessenheit.
+        Kann vom flow_orchestrator aufgerufen werden.
+        
+        Returns:
+            {"is_appropriate": bool, "reason": str, "suggested_response": str}
+        """
+        try:
+            # Einfache Regel-basierte Moderation
+            inappropriate_words = ["arsch", "fuck", "scheiß", "verdammt", "idiot", "blöd"]
+            content_lower = content.lower()
+            
+            for word in inappropriate_words:
+                if word in content_lower:
+                    return {
+                        "is_appropriate": False,
+                        "reason": f"Inappropriate language detected: {word}",
+                        "suggested_response": "Hey, lass uns lieber über Hundeverhalten sprechen. Beschreib mir bitte ein Verhalten deines Hundes!"
+                    }
+            
+            # Zu kurzer Content
+            if len(content.strip()) < 3:
+                return {
+                    "is_appropriate": False,
+                    "reason": "Content too short",
+                    "suggested_response": "Das ist mir zu kurz. Kannst du mir mehr erzählen?"
+                }
+            
+            return {
+                "is_appropriate": True,
+                "reason": "Content is appropriate",
+                "suggested_response": None
+            }
+            
+        except Exception as e:
+            print(f"❌ Fehler bei Content-Moderation: {e}")
+            return {
+                "is_appropriate": True,  # Im Fehlerfall eher erlauben
+                "reason": "Error in moderation",
+                "suggested_response": None
+            }
+    
+    async def provide_support(self, context: str) -> List[AgentMessage]:
+        """
+        Bietet Unterstützung oder Hilfe basierend auf Kontext.
+        Kann vom flow_orchestrator bei Problemen aufgerufen werden.
+        """
+        try:
+            if "error" in context.lower() or "problem" in context.lower():
+                return [AgentMessage(
+                    sender=self.role,
+                    text="Es scheint, als gäbe es ein kleines Problem. Lass uns von vorne beginnen - beschreibe einfach ein Hundeverhalten."
+                )]
+            
+            elif "confused" in context.lower() or "verwirrt" in context.lower():
+                return [AgentMessage(
+                    sender=self.role,
+                    text="Kein Problem! Du kannst mir einfach ein Verhalten deines Hundes beschreiben, und ich erkläre es dir aus Hundesicht."
+                )]
+            
+            else:
+                return [AgentMessage(
+                    sender=self.role,
+                    text="Wenn du Hilfe brauchst, beschreibe einfach ein Hundeverhalten - ich helfe gerne!"
+                )]
+                
+        except Exception as e:
+            print(f"❌ Fehler in provide_support: {e}")
+            return [AgentMessage(
+                sender=self.role,
+                text="Wenn du Hilfe brauchst, beschreibe einfach ein Hundeverhalten - ich helfe gerne!"
+            )]
+    
+    # ===============================================
+    # URSPRÜNGLICHE METHODEN (für Kompatibilität)
+    # ===============================================
         
     def _prepare_feedback_data(self, session_id: str, responses: List[str], messages: List[AgentMessage]) -> Dict[str, Any]:
         """
@@ -34,7 +185,7 @@ class CompanionAgent:
         # Feedback-Antworten vorbereiten
         prepared_responses = []
         
-        for question, answer in zip(self.feedback_questions, responses):
+        for i, (question, answer) in enumerate(zip(self.feedback_questions, responses)):
             prepared_responses.append({
                 "question": question,
                 "answer": answer
@@ -46,7 +197,7 @@ class CompanionAgent:
             "timestamp": datetime.now(UTC).isoformat(),
             "expiration_date": expiration_date,  # DSGVO-Löschfrist
             "responses": prepared_responses,
-            "messages": [msg.model_dump() for msg in messages], 
+            "messages": [msg.model_dump() if hasattr(msg, 'model_dump') else {"sender": msg.sender, "text": msg.text} for msg in messages], 
         }
 
     async def save_feedback(self, session_id: str, responses: List[str], messages: List[AgentMessage]):
